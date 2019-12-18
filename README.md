@@ -35,15 +35,11 @@ services_whitelist.txt .- Any service in this file will be shown in normal mode 
 One line of these files specifies one service or a range of services with this sintax:
 
 protocol/port
-
    or
-
 protocol/low_port:upper_port
 
 Examples:
-
 tcp/1:65535
-
 udp/1194
 
 Also, a line can be an empty line or a comment if it begins with the # character.
