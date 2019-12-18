@@ -35,11 +35,13 @@ services_whitelist.txt .- Any service in this file will be shown in normal mode 
 One line of these files specifies one service or a range of services with this sintax:
 
 protocol/port
-   or
+
 protocol/low_port:upper_port
 
 Examples:
+
 tcp/1:65535
+
 udp/1194
 
 Also, a line can be an empty line or a comment if it begins with the # character.
@@ -53,12 +55,14 @@ services_alias.txt
 
 One line of this file specifies an alias for one service or a range of services with this sintax:
 
-<protocol>/<port>  <long-name alias>  [short-name alias]
-          or
-<protocol>/<low_port>:<upper_port>  <long-name alias>  [short-name alias]
+protocol/port  "long-name alias"  "short-name alias"
+
+protocol/low_port:upper_port  "long-name alias"  "short-name alias"
   
 For example:
+
 tcp/6690 "Cloudstation NAS-Tolkien" "CloudStation"
+
 udp/7787:7796 "ARK Server Frodo" "ARK-S-Frodo"
 
 The short-name alias is optional.
@@ -73,5 +77,6 @@ NetMonitor <network_device>
 (Must be executed with root privileges)
 
 For example:
+
 ./NetMonitor eth0
 
