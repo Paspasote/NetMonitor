@@ -9,15 +9,9 @@ multiple views.
 
 At the moment, there are the following views:
 
-1. **Default view** .-  It shows every incoming connections ordered by time and number of hits (most recently
-                     on the top).
-                     Every connection shows Source IP, Protocol and service (ICMP, TCP or UDP), number of
-                     hits (frames) from Source IP and current bandwidth.
+1. **Default view** .- It shows every incoming connections ordered by time and number of hits (most recently on the top). Every connection shows Source IP, Protocol and service (ICMP, TCP or UDP), number of hits (frames) from Source IP and current bandwidth.
                      
-2. **Grouped by Source IP** .- It shows all incoming connections from the same Source IP (in the same raw)
-                            ordered by time and number of hits (most recently on the top).
-                            Every connection shows Source IP, number of hits and an ordered list of 
-                            services from Source IP (first service is the most recent).
+2. **Grouped by Source IP** .- It shows all incoming connections from the same Source IP (in the same raw)                        ordered by time and number of hits (most recently on the top). Every connection shows Source IP, number of hits and an ordered list of services from Source IP (first service is the most recent).
                             
 User can interact with this tool by pressing keys to to execute actions such as browsing connections
 or selecting connections to perform certain actions.
@@ -34,8 +28,8 @@ to be monitored through some configuration files (by now they must be on the def
 
 One line of these files specifies one service or a range of services with this sintax:
 
-protocol/port  
-protocol/low_port:upper_port
+**protocol/port  
+protocol/low_port:upper_port**
 
 Examples:  
 tcp/1:65535  
@@ -52,8 +46,8 @@ can specify their own alias for services with the configuration file (by now it 
 
 One line of this file specifies an alias for one service or a range of services with this sintax:
 
-protocol/port  "long-name alias"  "short-name alias"  
-protocol/low_port:upper_port  "long-name alias"  "short-name alias"
+**protocol/port  "long-name alias"  "short-name alias"  
+protocol/low_port:upper_port  "long-name alias"  "short-name alias"**
   
 For example:  
 tcp/6690 "Cloudstation NAS-Tolkien" "CloudStation"  
@@ -63,8 +57,19 @@ The short-name alias is optional.
 
 Also, a line can be an empty line or a comment if it begins with the # character.
 
-USAGE
-=====
+COMPILATION
+===========
+This tool use the following libraries: 
+- Posix thread
+- Pcap
+- ncurses
+
+Before compiling, you have to install the development libraries above. After that, you can compile it with:
+
+**make**
+
+EXECUTION
+=========
 
 **NetMonitor <network_device>**
 
