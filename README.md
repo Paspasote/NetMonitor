@@ -2,6 +2,8 @@
 A tool for real-time monitoring of incoming network connections (top-like) under linux using pcap library.
 ===========================================================================================================
 
+DESCRIPTION
+===========
 This tool shows on an ANSI terminal the current top inconming network connections in real time and with
 multiple views.
 
@@ -20,3 +22,9 @@ At the moment, there are the following views:
 User can interact with this tool by pressing keys to to execute actions such as browsing connections
 or selecting connections to perform certain actions.
 
+USAGE
+=====
+
+NetMonitor <network_device>
+
+(Must be executed with root privileges)
