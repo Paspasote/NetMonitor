@@ -22,6 +22,49 @@ At the moment, there are the following views:
 User can interact with this tool by pressing keys to to execute actions such as browsing connections
 or selecting connections to perform certain actions.
 
+CONFIGURATION
+=============
+By default, this tool does not monitor any TCP/UDP incoming connections. The user must indicate the services
+to be monitored through some configuration files (by now they must be on the default directory):
+
+services_blacklist.txt   .- Any service in this file will NOT be shown even if it appears on the other files.
+services_alert.txt .- Any service in this file will be shown in alert mode (red color)
+services_warning.txt .- Any service in this file will be shown in warning mode (yellow color)
+services_whitelist.txt .- Any service in this file will be shown in normal mode (default color)
+
+One line of these files specifies one service or a range of services with this sintax:
+
+<protocol>/<port>
+  or
+<protocol>/<low_port>:<upper_port>
+
+For example:
+tcp/1:65535
+udp/1194
+
+Also, a line can be an empty line or a comment if it begins with the # character.
+
+ALIASES
+=======
+By default, this tool shows the name of the service as it appears on /etc/services file. Besides, the user
+can specify their own alias for services with the configuration file (by now it must be on the default directory):
+
+services_alias.txt
+
+One line of this file specifies an alias for one service or a range of services with this sintax:
+
+<protocol>/<port>  <long-name alias>  [short-name alias]
+          or
+<protocol>/<low_port>:<upper_port>  <long-name alias>  [short-name alias]
+  
+For example:
+tcp/6690 "Cloudstation NAS-Tolkien" "CloudStation"
+udp/7787:7796 "ARK Server Frodo" "ARK-S-Frodo"
+
+The short-name alias is optional.
+
+Also, a line can be an empty line or a comment if it begins with the # character.
+
 USAGE
 =====
 
