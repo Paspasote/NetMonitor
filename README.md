@@ -66,7 +66,7 @@ This tool use the following libraries:
 
 Before compiling, you have to install the development libraries above. After that, you can compile it with:
 
-**make**
+**make release**
 
 EXECUTION
 =========
@@ -76,5 +76,5 @@ EXECUTION
 (Must be executed with root privileges)
 
 For example:  
-./NetMonitor eth0
+./Release/NetMonitor eth0
 
