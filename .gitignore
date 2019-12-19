@@ -1,0 +1,7 @@
+*.txt
+obj/*
+
+/build/
+/.settings/
+/.cproject
+/.project
