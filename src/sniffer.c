@@ -36,8 +36,6 @@ void *sniffer(void *ptr_dev) {
 	char *dev;
 	char errbuf[PCAP_ERRBUF_SIZE];
 	pcap_t *handle;
-	struct pcap_pkthdr header;
-	const u_char *packet;
 	int ret_loop_val;
 	struct bpf_program fp;
 	char filter_exp[] = "inbound";

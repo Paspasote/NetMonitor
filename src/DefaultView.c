@@ -189,7 +189,7 @@ void DV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const 
 	struct DV_info_bandwidth *info_bandwidth;
 	unsigned timeout;
 	int syn;
-	int inbound;
+	//int inbound;
 	int stop;
 
 	// Protocol wanted??
@@ -198,7 +198,7 @@ void DV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const 
 	}
 
 	// SYNC Flag ?
-	syn = ip->ip_p == IPPROTO_TCP && tcp_header->th_flags & TH_SYN && !(tcp_header->th_flags & TH_ACK);
+	syn = ip->ip_p == IPPROTO_TCP && (tcp_header->th_flags & TH_SYN) && !(tcp_header->th_flags & TH_ACK);
 
 	// Check if buffer list has been created
 	if (DV_l == NULL) {
@@ -421,7 +421,7 @@ void DV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const 
 		sprintf(m, "List size: %u", size_sorted_list(DV_l));
 		debugMessageXY(0, 0, m, NULL, 1);
 	}
-	/****************************************************************/
+	****************************************************************/
 
 	if (sem_post(&mutex_bp))
 	{

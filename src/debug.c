@@ -26,15 +26,11 @@ void init_debug_panel(unsigned lines) {
 void debugMessage(char *message, attr_t *attr, unsigned prioridad)
 {
     int posY_debug, debug_lines;
-    int x, y;
 
     // Message allowed?
     if (DEBUG < prioridad) {
     	return;
     }
-
-    // Get current cursor position
-    getyx(debug_panel, y, x);
 
     // Calculate position of debug panel
     debug_lines = min(DEBUG_LINES, (int)((LINES-info_lines)*DEBUG_SIZE));

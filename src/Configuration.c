@@ -22,7 +22,7 @@ char *rtrim(char *str, const char *seps);
 
 /********************************* DEBUG *******************
 void printPairPortDic(void *v_pair, void *param);
-/***********************************************************/
+***********************************************************/
 
 
 // Global vars
@@ -42,7 +42,7 @@ void Configuration() {
 
 	/******************* DEBUG **********************************
 	printConfDict(services_allow);
-	/************************************************************/
+	************************************************************/
 }
 
 int packetAllowed(unsigned protocol, unsigned port) {
@@ -145,7 +145,7 @@ void ProcessLine(dictionary d, char *filename, char *line, unsigned n_line) {
 	char *delim1 = "/";
 	char *delim2 = ":";
 	char *s_protocol, *ports_range, *port;
-	unsigned protocol;
+	int protocol;
 	unsigned *key;
 	int low_port, upper_port;
 	struct ports_range *info;
@@ -286,12 +286,11 @@ void ProcessServiceAlias(dictionary *d, char *filename) {
 
 
 void ProcessLineAlias(dictionary d, char *filename, char *line, unsigned n_line) {
-	char *seps = "\t ";
 	char *delim1 = "/";
 	char *delim2 = ":";
 	char *s_protocol, *ports_range, *port;
 	char *p, short_alias[200] = "", alias[200], line_backup[200];
-	unsigned protocol;
+	int protocol;
 	unsigned *key;
 	unsigned pos;
 	int low_port, upper_port;
@@ -680,4 +679,4 @@ void printConfDict(dictionary d) {
     for_each_dict(d, printPairPortDic, NULL);
 }
 
-/*************************************************************************************/
+*************************************************************************************/

@@ -128,7 +128,7 @@ void IPG_ShowElementService(void *data, void *cont_services) {
 	if (*(unsigned *)cont_services == MAX_SERVICES) {
 		return;
 	}
-	*(unsigned *)cont_services++;
+	*(unsigned *)cont_services = *(unsigned *)cont_services + 1;
 	
 	now = time(NULL);
 
@@ -218,7 +218,7 @@ void IPG_addPacket(const struct ether_header *ethernet,const struct ip *ip,const
 	}
 
 	// SYNC Flag ?
-	syn = ip->ip_p == IPPROTO_TCP && tcp_header->th_flags & TH_SYN && !(tcp_header->th_flags & TH_ACK);
+	syn = ip->ip_p == IPPROTO_TCP && (tcp_header->th_flags & TH_SYN) && !(tcp_header->th_flags & TH_ACK);
 
 	// Check if buffer list has been created
 	if (IPG_l == NULL) {
@@ -248,6 +248,19 @@ void IPG_addPacket(const struct ether_header *ethernet,const struct ip *ip,const
 	// Store Source and Destination IP address
 	info->ip_src = ip->ip_src;
 	info->ip_dst = ip->ip_dst;
+
+	// Protocol?
+	switch (ip->ip_p) {
+		case IPPROTO_ICMP:
+			timeout = 0;
+			break;
+		case IPPROTO_TCP:
+			timeout = TCP_TIMEOUT;
+			break;
+		case IPPROTO_UDP:
+			timeout = ANY_TIMEOUT;
+			break;
+	}
 
 	// Store timestamp of last inbound
 	info->time_inbound = info->time;
@@ -323,7 +336,7 @@ void IPG_addPacket(const struct ether_header *ethernet,const struct ip *ip,const
 		sprintf(m, "List size: %u", size_sorted_list(IPG_l));
 		debugMessageXY(0, 0, m, NULL, 1);
 	}
-	/****************************************************************/
+	****************************************************************/
 
 	if (sem_post(&mutex_bp))
 	{
@@ -340,7 +353,7 @@ void IPG_addService(struct IPG_info *info, const struct ip *ip, const struct icm
 	int syn;
 
 	// SYNC Flag ?
-	syn = ip->ip_p == IPPROTO_TCP && tcp_header->th_flags & TH_SYN && !(tcp_header->th_flags & TH_ACK);
+	syn = ip->ip_p == IPPROTO_TCP && (tcp_header->th_flags & TH_SYN) && !(tcp_header->th_flags & TH_ACK);
 
 
 	info_service = malloc(sizeof(struct IPG_service_info));
@@ -432,7 +445,7 @@ void IPG_addService(struct IPG_info *info, const struct ip *ip, const struct icm
 		sprintf(m, "Service list size: %u", size_sorted_list(info->l_services));
 		debugMessageXY(1, 0, m, NULL, 1);
 	}
-	/****************************************************************/
+	****************************************************************/
 }
 
 int IPG_Equals(void *val1, void *val2) {
@@ -586,16 +599,12 @@ int IPG_CompareService(void *val1, void *val2) {
 void IPG_Purge() {
 	struct node_sorted_list *node, *prev_node;
 	struct IPG_info *info;
-	time_t now;
-	unsigned timeout;
 
 	// List is valid?
 	if (IPG_l == NULL) 
 	{
 		return;
 	}
-
-	now = time(NULL);
 
 	if (sem_wait(&mutex_bp)) 
 	{
