@@ -17,7 +17,7 @@
 #define	TCP_TIMEOUT	900
 #define ANY_TIMEOUT 300
 #define RECENT_TIMEOUT	3
-#define INTERVAL_BANDWITH 1
+#define INTERVAL_BANDWITH 2
 
 // Global vars
 sorted_list DV_l = NULL;
@@ -94,7 +94,7 @@ void DV_ShowElement(void *data, void *param) {
 	stop = 0;
 	while (!stop && !isEmpty_double_list(info->last_connections)) {
 		info_bandwidth = (struct DV_info_bandwidth *) front_double_list(info->last_connections);
-		stop = now - info_bandwidth->time <= INTERVAL_BANDWITH;
+		stop = now - info_bandwidth->time < INTERVAL_BANDWITH;
 		if (!stop) {
 			// We have to remove this last connection
 			remove_front_double_list(info->last_connections);
