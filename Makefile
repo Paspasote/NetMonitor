@@ -25,17 +25,19 @@ DISTFILES := $(RELEASEDIR)/$(BIN) LICENSE README.md
 DISTOUTPUT := $(BIN).tgz
 
 # intermediate directory for generated object files
-OBJDIR := $(RELEASEDIR)/obj
+RELEASE_OBJDIR := $(RELEASEDIR)/obj
+DEBUG_OBJDIR := $(DEBUGDIR)/obj
 # intermediate directory for generated dependency files
 DEPDIR := .deps
 
 # object files, auto generated from source files
-OBJS := $(subst $(SRCDIR)/,,$(patsubst %,$(OBJDIR)/%.o,$(basename $(SRCS))))
+RELEASE_OBJS := $(subst $(SRCDIR)/,,$(patsubst %,$(RELEASE_OBJDIR)/%.o,$(basename $(SRCS))))
+DEBUG_OBJS := $(subst $(SRCDIR)/,,$(patsubst %,$(DEBUG_OBJDIR)/%.o,$(basename $(SRCS))))
+
 # dependency files, auto generated from source files
 DEPS := $(subst $(SRCDIR)/,,$(patsubst %,$(DEPDIR)/%.d,$(basename $(SRCS))))
 
 # compilers (at least gcc and clang) don't create the subdirectories automatically
-$(shell mkdir -p $(dir $(OBJS)) >/dev/null)
 $(shell mkdir -p $(dir $(DEPS)) >/dev/null)
 
 # C compiler
@@ -71,18 +73,24 @@ POSTCOMPILE = mv -f $(DEPDIR)/$*.Td $(DEPDIR)/$*.d
 
 all: release debug
 
-release: $(RELEASEDIR)/$(BIN)
+release: $(RELEASEDIR) $(RELEASEDIR)/$(BIN)
 	$(shell strip --strip-debug $^)
-	$(shell strip --strip-debug $(OBJS))
+	$(shell strip --strip-debug $(RELEASE_OBJS))
 
-debug: $(DEBUGDIR)/$(BIN)
+debug: $(DEBUGDIR) $(DEBUGDIR)/$(BIN)
+
+$(RELEASEDIR):
+	$(shell mkdir -p $(RELEASEDIR) >/dev/null)
+
+$(DEBUGDIR):
+	$(shell mkdir -p $(DEBUGDIR) >/dev/null)
 
 dist: $(DISTFILES)
 	$(TAR) -cvzf $(DISTOUTPUT) $^
 
 .PHONY: clean
 clean:
-	$(RM) -r $(OBJDIR) $(DEPDIR) $(RELEASEDIR) $(DEBUGDIR)
+	$(RM) -r $(DEPDIR) $(RELEASEDIR) $(DEBUGDIR)
 
 .PHONY: distclean
 distclean: clean
@@ -104,41 +112,74 @@ check:
 list:
 	@echo $(SRCS)
 	@echo $(DEPS)
-	@echo $(OBJS)
+	@echo $(RELEASE_OBJS)
+	@echo $(DEBUG_OBJS)
 	@echo $(BIN)
 	
 .PHONY: help
 help:
-	@echo available targets: all dist clean distclean install uninstall check
+	@echo available targets: all release debug dist clean distclean install uninstall check
 
-$(RELEASEDIR)/$(BIN): $(OBJS)
-	$(shell mkdir -p $(RELEASEDIR) >/dev/null)
-	$(LD) -o $@ $^ $(LDFLAGS) $(LDLIBS) 
+# Rule to make release executable
+$(RELEASEDIR)/$(BIN): $(RELEASE_OBJDIR) $(RELEASE_OBJS)
+	$(LD) -o $@ $(RELEASE_OBJS) $(LDFLAGS) $(LDLIBS) 
 	
-$(DEBUGDIR)/$(BIN): $(OBJS)
-	$(shell mkdir -p $(DEBUGDIR) >/dev/null)
-	$(LD) -o $@ $^ $(LDFLAGS) $(LDLIBS) 
+# Rule to make debugging executable (with debugging symbols) 
+$(DEBUGDIR)/$(BIN): $(DEBUG_OBJDIR) $(DEBUG_OBJS)
+	$(LD) -o $@ $(DEBUG_OBJS) $(LDFLAGS) $(LDLIBS) 
 
-$(OBJDIR)/%.o: $(SRCDIR)/%.c
-$(OBJDIR)/%.o: $(SRCDIR)/%.c $(DEPDIR)/%.d
+$(RELEASE_OBJDIR):
+	$(shell mkdir -p $(RELEASE_OBJDIR) >/dev/null)
+
+$(DEBUG_OBJDIR):
+	$(shell mkdir -p $(DEBUG_OBJDIR) >/dev/null)
+
+# Rules to make release objs
+$(RELEASE_OBJDIR)/%.o: $(SRCDIR)/%.c
+$(RELEASE_OBJDIR)/%.o: $(SRCDIR)/%.c $(DEPDIR)/%.d
 	$(PRECOMPILE)
 	$(COMPILE.c) $<
 	$(POSTCOMPILE)
 
-$(OBJDIR)/%.o: $(SRCDIR)/%.cpp
-$(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(DEPDIR)/%.d
+$(RELEASE_OBJDIR)/%.o: $(SRCDIR)/%.cpp
+$(RELEASE_OBJDIR)/%.o: $(SRCDIR)/%.cpp $(DEPDIR)/%.d
 	$(PRECOMPILE)
 	$(COMPILE.cc) $<
 	$(POSTCOMPILE)
 
-$(OBJDIR)/%.o: $(SRCDIR)/%.cc
-$(OBJDIR)/%.o: $(SRCDIR)/%.cc $(DEPDIR)/%.d
+$(RELEASE_OBJDIR)/%.o: $(SRCDIR)/%.cc
+$(RELEASE_OBJDIR)/%.o: $(SRCDIR)/%.cc $(DEPDIR)/%.d
 	$(PRECOMPILE)
 	$(COMPILE.cc) $<
 	$(POSTCOMPILE)
 
-$(OBJDIR)/%.o: $(SRCDIR)/%.cxx
-$(OBJDIR)/%.o: $(SRCDIR)/%.cxx $(DEPDIR)/%.d
+$(RELEASE_OBJDIR)/%.o: $(SRCDIR)/%.cxx
+$(RELEASE_OBJDIR)/%.o: $(SRCDIR)/%.cxx $(DEPDIR)/%.d
+	$(PRECOMPILE)
+	$(COMPILE.cc) $<
+	$(POSTCOMPILE)
+
+# Rule to make debugging objs (with debugging symbols) 
+$(DEBUG_OBJDIR)/%.o: $(SRCDIR)/%.c
+$(DEBUG_OBJDIR)/%.o: $(SRCDIR)/%.c $(DEPDIR)/%.d
+	$(PRECOMPILE)
+	$(COMPILE.c) $<
+	$(POSTCOMPILE)
+
+$(DEBUG_OBJDIR)/%.o: $(SRCDIR)/%.cpp
+$(DEBUG_OBJDIR)/%.o: $(SRCDIR)/%.cpp $(DEPDIR)/%.d
+	$(PRECOMPILE)
+	$(COMPILE.cc) $<
+	$(POSTCOMPILE)
+
+$(DEBUG_OBJDIR)/%.o: $(SRCDIR)/%.cc
+$(DEBUG_OBJDIR)/%.o: $(SRCDIR)/%.cc $(DEPDIR)/%.d
+	$(PRECOMPILE)
+	$(COMPILE.cc) $<
+	$(POSTCOMPILE)
+
+$(DEBUG_OBJDIR)/%.o: $(SRCDIR)/%.cxx
+$(DEBUG_OBJDIR)/%.o: $(SRCDIR)/%.cxx $(DEPDIR)/%.d
 	$(PRECOMPILE)
 	$(COMPILE.cc) $<
 	$(POSTCOMPILE)
