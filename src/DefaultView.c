@@ -151,7 +151,7 @@ void DV_ShowElement(void *data, void *param) {
 			break;	
 	}
 
-	if (info->priority == 1 && now - info->time_inbound < RECENT_TIMEOUT) {
+	if (info->priority == 1 && now - info->time_inbound > RECENT_TIMEOUT) {
 		p_attr = NULL;
 	}
 	else {
