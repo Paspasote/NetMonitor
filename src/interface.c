@@ -208,11 +208,12 @@ void writeLineOnResult(char *text, attr_t *attr)
     if (attr != NULL) {
         wattron(result_panel, *attr);
     }
-    else {
-        wstandend(result_panel);
-    }
 
     waddstr(result_panel, text);
+
+    if (attr != NULL) {
+    	wattroff(result_panel, *attr);
+    }
  }
 
 void refreshTop()
@@ -244,6 +245,8 @@ void refreshTop()
     // Clear panels
     werase(info_panel);
     werase(result_panel);
+    wmove(info_panel, 0, 0);
+    wmove(result_panel, 0, 0);
 
     // Show time and options on info panel 
     now = time(NULL);
@@ -280,10 +283,6 @@ void refreshTop()
         return;
     }
 
-
-    wmove(result_panel, result_top_row, 0);
-    wmove(result_panel, 1, 0);
-
     // If a row is selected on result panel, highlight it
     if (result_selected_row != -1)
     {
@@ -292,6 +291,9 @@ void refreshTop()
 
     if (DEBUG > 0 && result_visible_rows > 0)
     {
+        mvwhline(result_panel, result_top_row+result_visible_rows-1, 0, '_', RESULT_COLS);
+    }
+    else {
         mvwhline(result_panel, result_top_row+result_visible_rows-1, 0, '_', RESULT_COLS);
     }
 
