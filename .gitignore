@@ -7,3 +7,6 @@
 /.project
 /launch_debug
 /debug_debug
+Whois.data*
+WhoisRequests.*
+.vscode/*
