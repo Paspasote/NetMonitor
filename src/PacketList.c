@@ -6,7 +6,7 @@
 
 // Global vars
 list buffer_packets = NULL;
-extern sem_t mutex_bp;
+extern sem_t mutex_packages_list;
 
 // Function prototypes
 void init(list *l);
@@ -28,15 +28,15 @@ void addPacket(const struct ether_header *ethernet,const struct ip *ip,const str
 
 	// Check if buffer list has been created
 	if (buffer_packets == NULL) {
-		if (sem_wait(&mutex_bp)) 
+		if (sem_wait(&mutex_packages_list)) 
 		{
-			perror("addPacket (PacketList): sem_wait with mutex_bp");
+			perror("addPacket (PacketList): sem_wait with mutex_packages_list");
 			exit(1);
 		}
 		init(&buffer_packets);
-		if (sem_post(&mutex_bp))
+		if (sem_post(&mutex_packages_list))
 		{
-			perror("addPacket (PacketList): sem_post with mutex_bp");
+			perror("addPacket (PacketList): sem_post with mutex_packages_list");
 			exit(1);		
 		}
 	}
@@ -94,15 +94,15 @@ void addPacket(const struct ether_header *ethernet,const struct ip *ip,const str
 	}
 
 	// Store the current packet in packet buffer
-	if (sem_wait(&mutex_bp)) 
+	if (sem_wait(&mutex_packages_list)) 
 	{
-		perror("addPacket (PacketList): sem_wait with mutex_bp");
+		perror("addPacket (PacketList): sem_wait with mutex_packages_list");
 		exit(1);
 	}
 	insert_tail(buffer_packets, info);
-	if (sem_post(&mutex_bp))
+	if (sem_post(&mutex_packages_list))
 	{
-		perror("addPacket (PacketList): sem_post with mutex_bp");
+		perror("addPacket (PacketList): sem_post with mutex_packages_list");
 		exit(1);		
 	}
 
@@ -153,22 +153,34 @@ void show_info() {
 	}
 
 	// Show one packet and remove it
-	if (sem_wait(&mutex_bp)) 
+	if (sem_wait(&mutex_packages_list)) 
 	{
-		perror("show_info (PacketList): sem_wait with mutex_bp");
+		perror("show_info (PacketList): sem_wait with mutex_packages_list");
 		exit(1);
 	}
 
-	if (!isEmpty(buffer_packets)) {
+	while (!isEmpty(buffer_packets)) {
+		if (sem_post(&mutex_packages_list))
+		{
+			perror("show_info (PacketList): sem_post with mutex_packages_list");
+			exit(1);		
+		}
+
 		show_packet(front(buffer_packets));
+		if (sem_wait(&mutex_packages_list)) 
+		{
+			perror("show_info (PacketList): sem_wait with mutex_packages_list");
+			exit(1);
+		}
 		remove_front(buffer_packets);
 	}
 
-	if (sem_post(&mutex_bp))
+	if (sem_post(&mutex_packages_list))
 	{
-		perror("show_info (PacketList): sem_post with mutex_bp");
+		perror("show_info (PacketList): sem_post with mutex_packages_list");
 		exit(1);		
 	}
+
 }
 
 void init(list *l)
@@ -178,7 +190,7 @@ void init(list *l)
 		fprintf(stderr,"init: List must be NULL!!\n");
 		exit(1);
 	}
-	*l = malloc(sizeof(struct info_list));
+	*l = (struct info_list *) malloc(sizeof(struct info_list));
 	if (*l == NULL)
 	{
 		fprintf(stderr,"init: Could not allocate memory!!\n");
@@ -230,7 +242,7 @@ void insert_front(list l, struct info_packet data)
 		exit(1);
 	}
 
-	p = malloc(sizeof(struct node));
+	p = (struct node *) malloc(sizeof(struct node));
 	if (p == NULL)
 	{
 		fprintf(stderr,"insert_front: Could not allocate memory!!\n");
@@ -263,7 +275,7 @@ void insert_tail(list l, struct info_packet data)
 		exit(1);
 	}
 
-	p = malloc(sizeof(struct node));
+	p = (struct node *) malloc(sizeof(struct node));
 	if (p == NULL)
 	{
 		fprintf(stderr,"insert_tail: Could not allocate memory!!\n");
