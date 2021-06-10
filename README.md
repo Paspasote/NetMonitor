@@ -6,7 +6,9 @@ DESCRIPTION
 ===========
 This tool shows on an ANSI terminal the current top inconming/outgoing network connections in real time and with multiple views. Connections are tracked to distinguish between new and established ones. This monitor is capable of track new incoming connections and the outgoing responses.
 
-At the moment, there are the following views:
+This monitor do WhoIs requests to get extra info of the connections (country and net name). To avoid bans from WhoIs servers the number and frequency of these requests are limited (by default 1000 requests per day maximum and no more than one request every 3 seconds). The information collected from WhoIs servers is save to a file database in binary format (`Whois.data` file) in the current directory. The monitor **first search in its own WhoIs database** and only if not information was found do a request to a WhoIs server. **So, the more executions of the monitor, the less requests to Whois servers  will be needed.**. Local WhoIs database records has the date the information was recorded. It is planned to update this records (asking a WhoIs server) when its information be very old (feature not yet implemented).
+
+At the moment, this monitor has the following views:
 
 1. **Default view** .- It shows every incoming connections ordered by time and number of hits (most recently on the top). By default, responses packets are not shown. Every connection shows:
     - Date
