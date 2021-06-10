@@ -21,7 +21,7 @@ At the moment, this monitor has the following views:
     - Net's name of the source IP
     - Protocol and service (ICMP, TCP or UDP)
                      
-2. **Grouped by Source IP** .- It shows all incoming connections from the same Source IP (in the same screen raw) ordered by time and number of hits (most recently on the top). By default, responses packets are not shown. Every connection shows:
+2. **Grouped by Source IP** .- It shows all incoming connections from the same Source IP (in the same screen row) ordered by time and number of hits (most recently on the top). By default, responses packets are not shown. Every connection shows:
     - Date
     - Time
     - Number of hits (frames) from source IP
