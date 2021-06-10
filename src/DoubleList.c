@@ -9,7 +9,7 @@ void init_double_list(double_list *l)
 		fprintf(stderr,"init_double_list: List must be NULL!!\n");
 		exit(1);
 	}
-	*l = malloc(sizeof(struct info_double_list));
+	*l = (struct info_double_list *) malloc(sizeof(struct info_double_list));
 	if (*l == NULL)
 	{
 		fprintf(stderr,"init_double_list: Could not allocate memory!!\n");
@@ -78,7 +78,6 @@ void * tail_double_list(double_list l)
 }
 
 struct node_double_list * find_double_list(double_list l, void *val, int (*compare)(void *, void*) ) {
-	int (*f)(void *, void*);
 	struct node_double_list *p;
 
 	if (l == NULL) 
@@ -87,27 +86,17 @@ struct node_double_list * find_double_list(double_list l, void *val, int (*compa
 		exit(1);
 	}
 
-	if (compare == NULL) {
-		f = l->f_compare;
-	}
-	else {
-		f = compare;
-	}
-
 	// Find the position of the element
 	p = l->header;
-	while (p != NULL && (*f)(val, p->info) == 1)
+	while (p != NULL && (*compare)(val, p->info) == 0)
 	{
 		p = p->next;
 	}
 
-	if (p != NULL && (*f)(val, p->info) != 0) {
-		p = NULL;
-	}
 	return p;
 }
 
-void clear_all_double_list(double_list l)
+void clear_all_double_list(double_list l, int free_info, void (*f)(void *, void *), void *param)
 {
 	struct node_double_list *p;
 
@@ -121,7 +110,13 @@ void clear_all_double_list(double_list l)
 	{
 		p = l->header;
 		l->header=p->next;
-		free(p->info);
+		if (f != NULL) 
+		{
+			(*f)(p->info, param);
+		}
+		if (free_info) {
+			free(p->info);
+		}
 		free(p);
 	}
 	l->tail = NULL;
@@ -138,7 +133,7 @@ void insert_front_double_list(double_list l, void *data)
 		exit(1);
 	}
 
-	p = malloc(sizeof(struct node_double_list));
+	p = (struct node_double_list *) malloc(sizeof(struct node_double_list));
 	if (p == NULL)
 	{
 		fprintf(stderr,"insert_front_double_list: Could not allocate memory!!\n");
@@ -171,7 +166,7 @@ void insert_tail_double_list(double_list l, void *data)
 		exit(1);
 	}
 
-	p = malloc(sizeof(struct node_double_list));
+	p = (struct node_double_list *) malloc(sizeof(struct node_double_list));
 	if (p == NULL)
 	{
 		fprintf(stderr,"insert_tail_double_list: Could not allocate memory!!\n");
@@ -194,7 +189,7 @@ void insert_tail_double_list(double_list l, void *data)
 	l->n_elements++;
 }
 
-void remove_front_double_list(double_list l)
+void remove_front_double_list(double_list l, int free_info)
 {
 	struct node_double_list *p;
 
@@ -220,12 +215,15 @@ void remove_front_double_list(double_list l)
 	{
 		l->header->prev = NULL;		
 	}
-	free(p->info);
+	if (free_info)
+	{
+		free(p->info);
+	}
 	free(p);
 	l->n_elements--;
 }
 
-void remove_tail_double_list(double_list l) 
+void remove_tail_double_list(double_list l, int free_info) 
 {
 	struct node_double_list *p;
 
@@ -251,16 +249,18 @@ void remove_tail_double_list(double_list l)
 	{
 		l->tail->next = NULL;
 	}
-	free(p->info);
+	if (free_info)
+	{
+		free(p->info);
+	}
 	free(p);
 	l->n_elements--;
 
 }
 
-void remove_double_list(double_list l, void *val, int (*compare)(void *, void*))
+void remove_double_list(double_list l, void *val, int free_info, int (*compare)(void *, void*))
 {
-	int (*f)(void *, void*);
-	struct node_double_list *p, *prev_p;
+	struct node_double_list *p, *current, *prev_current;
 
 	if (l == NULL) 
 	{
@@ -274,95 +274,71 @@ void remove_double_list(double_list l, void *val, int (*compare)(void *, void*))
 		exit(1);
 	}
 
-	if (compare == NULL) {
-		f = l->f_compare;
-	}
-	else {
-		f = compare;
-	}
-
-	// Find the position of the element to remove
+	// Iterate all elements and remove those equal to val
 	p = l->header;
-	while (p != NULL && (*f)(val, p->info)  == 1)
+	while (p != NULL)
 	{
+		current = p;
 		p = p->next;
-	}
-	// Remove all elements equal to val
-	while (p != NULL && !(*f)(val, p->info))
-	{
-		prev_p = p->prev;
-		if (p->next == NULL) {
-			// Removing last node, we need to update tail
-			l->tail = prev_p;
-		}
-		if (prev_p != NULL)
+		if ((*compare)(val, current->info))
 		{
-			prev_p->next = p->next;
-			free(p->info);
-			free(p);
-			p = prev_p->next;
+			// We have to remove current node
+			prev_current = current->prev;
+			if (current->next == NULL) {
+				// Removing last node, we need to update tail
+				l->tail = prev_current;
+			}
+			if (prev_current != NULL)
+			{
+				prev_current->next = current->next;
+				if (free_info)
+				{
+					free(current->info);
+				}
+				free(current);
+			}
+			else
+			{
+				// Removing first node, we need to update head
+				l->header = current->next;
+				if (free_info)
+				{
+					free(current->info);
+				}
+				free(current);
+			}
+			l->n_elements--;
 		}
-		else
-		{
-			// Removing first node, we need to update head
-			l->header = p->next;
-			free(p->info);
-			free(p);
-			p = l->header;
-		}
-		l->n_elements--;
 	}
 }
 
-void removeNode_double_list(double_list l, struct node_double_list *node) 
+void removeNode_double_list(double_list l, struct node_double_list *node, int free_info) 
 {
-	struct node_double_list *p, *prev_p;
+	struct node_double_list *prev_node, *next_node;
 
-	if (l == NULL) 
-	{
-		fprintf(stderr,"removeNode_double_list: List is not valid!!\n");
-		exit(1);
-	}
+	prev_node = node->prev;
+	next_node = node->next;
 
-	if (l->n_elements == 0) 
-	{
-		fprintf(stderr,"removeNode_double_list: List is empty!!\n");
-		exit(1);
-	}
-
-	// Find the position of the node to remove
-	p = l->header;
-	while (p != NULL && p != node)
-	{
-		p = p->next;
-	}
-	if (p != NULL)
-	{
-		prev_p = p->prev;
-		if (p->next == NULL) {
-			// Removing last node, we need to update tail
-			l->tail = prev_p;
-		}
-		if (prev_p != NULL)
-		{
-			prev_p->next = p->next;
-			free(p->info);
-			free(p);
-		}
-		else
-		{
-			// Removing first node, we need to udpate head
-			l->header = p->next;
-			free(p->info);
-			free(p);
-		}
-		l->n_elements--;
+	if (prev_node == NULL) {
+		// Removing at the beggining
+		l->header = next_node;
 	}
 	else {
-		fprintf(stderr,"removeNode_double_list: Node is not valid!!\n");
-		exit(1);		
+		prev_node->next = next_node;
 	}
-
+	if (next_node == NULL) {
+		// Removing at the end
+		l->tail = prev_node;
+	}
+	else {
+		next_node->prev = prev_node;
+	}
+	if (free_info)
+	{
+		free(node->info);
+	}
+	free(node);
+	l->n_elements--;
 }
 
 void for_each_double_list(double_list l, void (*f)(void *, void *), void *param) {
