@@ -5,18 +5,23 @@
 #include <netinet/ip.h>
 
 #include <Configuration.h>
+#include <misc.h>
 #include <debug.h>
 
 // Function prototypes
-void ProcessServiceConfig(dictionary *d, char *filename);
-void ProcessLine(dictionary d, char *filename, char *line, unsigned n_line);
-void ProcessServiceAlias(dictionary *d, char *filename);
-void ProcessLineAlias(dictionary d, char *filename, char *line, unsigned n_line);
+void processServiceConfig(dictionary *d, char *filename);
+void processServiceLine(dictionary d, char *filename, char *line, unsigned n_line);
+void processHostConfig(sorted_list *l, char *filename);
+void processHostLine(sorted_list l, char *filename, char *line, unsigned n_line);
+void processServiceAlias(dictionary *d, char *filename);
+void processLineAlias(dictionary d, char *filename, char *line, unsigned n_line);
 int compareService(void *val1,  void *val2);
-int compareServicePort(void *val1,  void *val2);
-int compareServiceAlias(void *val1,  void *val2);
-int Config_PortInRange(void *val1, void *val2);
-int Config_PortInRangeAlias(void *val1, void *val2);
+int compareServicePort(struct value_dict *info1, struct value_dict *info2);
+int compareAddress(void *val1,  void *val2);
+int compareAddress2(void *val1, void *val2);
+int compareServiceAlias(struct value_dict *info1, struct value_dict *info2);
+int config_PortInRange(struct value_dict *info1, struct value_dict *info2);
+int config_PortInRangeAlias(struct value_dict *info1, struct value_dict *info2);
 char *ltrim(char *str, const char *seps);
 char *rtrim(char *str, const char *seps);
 
@@ -26,53 +31,139 @@ void printPairPortDic(void *v_pair, void *param);
 
 
 // Global vars
-dictionary services_allow;
-dictionary services_warning;
-dictionary services_alert;
-dictionary services_deny;
+dictionary incoming_services_allow;
+dictionary incoming_services_warning;
+dictionary incoming_services_alert;
+dictionary incoming_services_deny;
+dictionary outgoing_services_allow;
+dictionary outgoing_services_warning;
+dictionary outgoing_services_alert;
+dictionary outgoing_services_deny;
+sorted_list outgoing_hosts_allow;
+sorted_list outgoing_hosts_warning;
+sorted_list outgoing_hosts_alert;
+sorted_list outgoing_hosts_deny;
 dictionary services_alias;
 
-void Configuration() {
-	ProcessServiceConfig(&services_allow, "services_whitelist.txt");
-	ProcessServiceConfig(&services_warning, "services_warning.txt");
-	ProcessServiceConfig(&services_alert, "services_alert.txt");
-	ProcessServiceConfig(&services_deny, "services_blacklist.txt");
 
-	ProcessServiceAlias(&services_alias, "services_alias.txt");
+void Configuration() {
+	processServiceConfig(&incoming_services_allow, "incoming_services_whitelist.txt");
+	processServiceConfig(&incoming_services_warning, "incoming_services_warning.txt");
+	processServiceConfig(&incoming_services_alert, "incoming_services_alert.txt");
+	processServiceConfig(&incoming_services_deny, "incoming_services_blacklist.txt");
+	processServiceConfig(&outgoing_services_allow, "outgoing_services_whitelist.txt");
+	processServiceConfig(&outgoing_services_warning, "outgoing_services_warning.txt");
+	processServiceConfig(&outgoing_services_alert, "outgoing_services_alert.txt");
+	processServiceConfig(&outgoing_services_deny, "outgoing_services_blacklist.txt");
+
+	processHostConfig(&outgoing_hosts_allow, "outgoing_hosts_allow.txt");
+	processHostConfig(&outgoing_hosts_warning, "outgoing_hosts_warning.txt");
+	processHostConfig(&outgoing_hosts_alert, "outgoing_hosts_alert.txt");
+	processHostConfig(&outgoing_hosts_deny, "outgoing_hosts_deny.txt");
+
+	processServiceAlias(&services_alias, "services_alias.txt");
 
 	/******************* DEBUG **********************************
-	printConfDict(services_allow);
+	printConfDict(incoming_services_allow);
 	************************************************************/
 }
 
-int packetAllowed(unsigned protocol, unsigned port) {
+int incoming_packetAllowed(unsigned protocol, unsigned port) {
 	struct ports_range info;
 
 	info.lower = port;
 	info.upper = port;
 
-	if (find_dict(services_deny, (void *)&protocol, (void *)&info, Config_PortInRange) != NULL) 
+	if (find_dict(incoming_services_deny, (void *)&protocol, (void *)&info, config_PortInRange) != NULL) 
 	{
 		// Service found in black list. Do not process it!
 		return 0;
 	}
 
-	if (find_dict(services_alert, (void *)&protocol, (void *)&info, Config_PortInRange) != NULL) 
+	if (find_dict(incoming_services_alert, (void *)&protocol, (void *)&info, config_PortInRange) != NULL) 
 	{
 		return 3;
 	}
 
-	if (find_dict(services_warning, (void *)&protocol, (void *)&info, Config_PortInRange) != NULL)
+	if (find_dict(incoming_services_warning, (void *)&protocol, (void *)&info, config_PortInRange) != NULL)
 	{
 		return 2;
 	}
 
-	if (find_dict(services_allow, (void *)&protocol, (void *)&info, Config_PortInRange) != NULL)
+	if (find_dict(incoming_services_allow, (void *)&protocol, (void *)&info, config_PortInRange) != NULL)
 	{
 		return 1;
 	}
 
 	return 0;
+}
+
+int outgoing_packetAllowed(struct in_addr address, unsigned protocol, unsigned port, int no_tcp_udp) {
+	struct ports_range info;
+	int priority_address=0, priority_service=0;
+
+	info.lower = port;
+	info.upper = port;
+	
+	// Check if source address is allowed
+	if (find_sorted_list(outgoing_hosts_deny, (void *)&address, compareAddress2) != NULL) 
+	{
+		// Address found in black list. Do not process it!
+		return 0;
+	}
+	if (find_sorted_list(outgoing_hosts_alert, (void *)&address, compareAddress2) != NULL) 
+	{
+		priority_address = 3;
+	}
+
+	if (find_sorted_list(outgoing_hosts_warning, (void *)&address, compareAddress2) != NULL)
+	{
+		priority_address = 2;
+	}
+
+	if (find_sorted_list(outgoing_hosts_allow, (void *)&address, compareAddress2) != NULL)
+	{
+		priority_address = 1;
+	}
+
+
+	if (no_tcp_udp) {
+		return priority_address;
+	}
+	
+	if (no_tcp_udp) {
+		return priority_address;
+	}
+	
+
+	// Check if service is allowed
+	if (find_dict(outgoing_services_deny, (void *)&protocol, (void *)&info, config_PortInRange) != NULL) 
+	{
+		// Service found in black list. Do not process it!
+		return 0;
+	}
+
+	if (find_dict(outgoing_services_alert, (void *)&protocol, (void *)&info, config_PortInRange) != NULL) 
+	{
+		priority_service = 3;
+	}
+
+	if (find_dict(outgoing_services_warning, (void *)&protocol, (void *)&info, config_PortInRange) != NULL)
+	{
+		priority_service = 2;
+	}
+
+	if (find_dict(outgoing_services_allow, (void *)&protocol, (void *)&info, config_PortInRange) != NULL)
+	{
+		priority_service = 1;
+	}
+
+	if (!priority_address || !priority_service) {
+		return 0;
+	}
+	else {
+		return max(priority_address, priority_service);
+	}
 }
 
 char *serviceAlias(unsigned protocol, unsigned port) {
@@ -85,7 +176,7 @@ char *serviceAlias(unsigned protocol, unsigned port) {
 	info.upper = port;
 	info.alias = NULL;
 
-	node = find_dict(services_alias, (void *)&protocol, (void *)&info, Config_PortInRangeAlias);
+	node = find_dict(services_alias, (void *)&protocol, (void *)&info, config_PortInRangeAlias);
 
 	if (node == NULL) {
 		return NULL;
@@ -107,7 +198,7 @@ char *serviceShortAlias(unsigned protocol, unsigned port) {
 	info.upper = port;
 	info.alias = NULL;
 
-	node = find_dict(services_alias, (void *)&protocol, (void *)&info, Config_PortInRangeAlias);
+	node = find_dict(services_alias, (void *)&protocol, (void *)&info, config_PortInRangeAlias);
 
 	if (node == NULL) {
 		return NULL;
@@ -119,7 +210,7 @@ char *serviceShortAlias(unsigned protocol, unsigned port) {
 	}
 }
 
-void ProcessServiceConfig(dictionary *d, char *filename) {
+void processServiceConfig(dictionary *d, char *filename) {
 	FILE *fe;
 	char line[100];
 	unsigned n_line = 0;
@@ -134,13 +225,13 @@ void ProcessServiceConfig(dictionary *d, char *filename) {
 
 	while (fgets(line, sizeof(line)-1, fe) != NULL) {
 		n_line++;
-		ProcessLine(*d, filename, line, n_line);
+		processServiceLine(*d, filename, line, n_line);
 	}
 
 	fclose(fe);
 }
 
-void ProcessLine(dictionary d, char *filename, char *line, unsigned n_line) {
+void processServiceLine(dictionary d, char *filename, char *line, unsigned n_line) {
 	char *seps = "\t ";
 	char *delim1 = "/";
 	char *delim2 = ":";
@@ -165,7 +256,7 @@ void ProcessLine(dictionary d, char *filename, char *line, unsigned n_line) {
 	}
 
 	// Only one word??
-	if (strtok(line, seps) == NULL && strtok(NULL, seps) != NULL) {
+	if (strtok(line, seps) != NULL && strtok(NULL, seps) != NULL) {
 		fprintf(stderr, "Bad config file (%s) at line %u: Must be only one word\n", filename, n_line);
 		exit(1);
 	}
@@ -243,16 +334,16 @@ void ProcessLine(dictionary d, char *filename, char *line, unsigned n_line) {
 		}
 	}
 
-	key = malloc(sizeof(unsigned));
+	key = (unsigned *) malloc(sizeof(unsigned));
 	if (key == NULL)
 	{
-		fprintf(stderr,"ProcessLine: Could not allocate memory for key!!\n");
+		fprintf(stderr,"processServiceLine: Could not allocate memory for key!!\n");
 		exit(1);		
 	}
-	info = malloc(sizeof(struct ports_range));
+	info = (struct ports_range *) malloc(sizeof(struct ports_range));
 	if (info == NULL)
 	{
-		fprintf(stderr,"ProcessLine: Could not allocate memory for value!!\n");
+		fprintf(stderr,"processServiceLine: Could not allocate memory for value!!\n");
 		exit(1);		
 	}
 
@@ -263,7 +354,140 @@ void ProcessLine(dictionary d, char *filename, char *line, unsigned n_line) {
 	insert_dict(d, (void *)key, (void *)info);
 }
 
-void ProcessServiceAlias(dictionary *d, char *filename) {
+void processHostConfig(sorted_list *l, char *filename) {
+	FILE *fe;
+	char line[100];
+	unsigned n_line = 0;
+
+	init_sorted_list(l, compareAddress);
+
+	fe = fopen(filename, "rt");
+
+	if (fe == NULL) {
+		return;
+	}
+
+	while (fgets(line, sizeof(line)-1, fe) != NULL) {
+		n_line++;
+		processHostLine(*l, filename, line, n_line);
+	}
+
+	fclose(fe);
+}
+
+void processHostLine(sorted_list l, char *filename, char *line, unsigned n_line) {
+	char *seps = "\t ";
+	char *delim1 = "/";
+	char *delim2 = ".";
+	char *s_address, s_address_aux[100], *s_mask, *s_byte;
+	unsigned i, cont_byte, byte;
+	struct address_mask *info;
+	struct in_addr address_aux;
+	in_addr_t mask;
+	 
+
+	line = ltrim(line, NULL);
+	line = rtrim(line, NULL);
+
+	if (!strcmp(line, "")) {
+		// Empty line
+		return;
+	}
+
+	// Is It a comment?
+	if (line[0] == '#') {
+		// Comment line
+		return;
+	}
+
+	// Only one word??
+	if (strtok(line, seps) != NULL && strtok(NULL, seps) != NULL) {
+		fprintf(stderr, "Bad config file (%s) at line %u: Must be only one word\n", filename, n_line);
+		exit(1);
+	}
+
+	// Extract Address
+	s_address = strtok(line, delim1);
+
+	// Mask?
+	s_mask = strtok(NULL, delim1);
+	if (s_mask != NULL) {
+		// More tokens ?
+		if (strtok(NULL, delim1) != NULL) {
+			fprintf(stderr, "Bad config file (%s) at line %u: Bad IP address (%s)\n", filename, n_line, line);
+			exit(1);
+		}
+	}
+
+	// Check address format
+	strcpy(s_address_aux, s_address);
+	cont_byte = 0;
+	s_byte = strtok(s_address_aux, delim2);
+	while (s_byte != NULL && cont_byte < 4) {
+		cont_byte++;
+		for (i=0; i<strlen(s_byte); i++) {
+			if (!isdigit(s_byte[i])) {
+				fprintf(stderr, "Bad config file (%s) at line %u: Bad IP address (%s)\n", filename, n_line, s_address);
+				exit(1);		
+			}
+		}
+		if (sscanf(s_byte, "%u", &byte) != 1 || byte > 255) {
+			fprintf(stderr, "Bad config file (%s) at line %u: Bad IP address (%s)\n", filename, n_line, s_address);
+			exit(1);		
+		}
+		s_byte = strtok(NULL, delim2);
+	}
+	if (s_byte != NULL || cont_byte != 4) {
+		fprintf(stderr, "Bad config file (%s) at line %u: Bad IP address (%s)\n", filename, n_line, s_address);
+		exit(1);		
+	}
+	if (s_address[strlen(s_address)-1] == '.') {
+		fprintf(stderr, "Bad config file (%s) at line %u: Bad IP address (%s)\n", filename, n_line, s_address);
+		exit(1);		
+	}
+
+	// Check mask
+	if (s_mask != NULL) {
+		for (i=0; i<strlen(s_mask); i++) {
+			if (!isdigit(s_mask[i])) {
+				fprintf(stderr, "Bad config file (%s) at line %u: Bad Mask address (%s)\n", filename, n_line, s_mask);
+				exit(1);		
+			}
+		}
+		if (sscanf(s_mask, "%u", &byte) != 1 || byte > 32) {
+			fprintf(stderr, "Bad config file (%s) at line %u: Bad Mask address (%s)\n", filename, n_line, s_mask);
+			exit(1);		
+		}
+		if (byte != 32) {
+			// Check network address. Host part of the address must be zero
+			inet_pton(AF_INET, s_address, &address_aux);
+			mask = 0b11111111111111111111111111111111;
+			mask = mask >> byte;
+			if (ntohl(address_aux.s_addr) & mask) {
+				fprintf(stderr, "Bad config file (%s) at line %u: Bad network address (%s/%s)\n", filename, n_line, s_address, s_mask);
+				exit(1);		
+			}
+		}
+	}
+
+	// Save address/mask
+	info = (struct address_mask *) malloc(sizeof(struct address_mask));
+	if (info == NULL)
+	{
+		fprintf(stderr,"processHostLine: Could not allocate memory for value!!\n");
+		exit(1);		
+	}
+	inet_pton(AF_INET, s_address, &info->address);
+	if (s_mask != NULL) {
+		info->mask = byte;
+	}
+	else {
+		info->mask = 32;
+	}
+	insert_sorted_list(l, info);
+}
+
+void processServiceAlias(dictionary *d, char *filename) {
 	FILE *fe;
 	char line[200];
 	unsigned n_line = 0;
@@ -278,14 +502,14 @@ void ProcessServiceAlias(dictionary *d, char *filename) {
 
 	while (fgets(line, sizeof(line)-1, fe) != NULL) {
 		n_line++;
-		ProcessLineAlias(*d, filename, line, n_line);
+		processLineAlias(*d, filename, line, n_line);
 	}
 
 	fclose(fe);
 }
 
 
-void ProcessLineAlias(dictionary d, char *filename, char *line, unsigned n_line) {
+void processLineAlias(dictionary d, char *filename, char *line, unsigned n_line) {
 	char *delim1 = "/";
 	char *delim2 = ":";
 	char *s_protocol, *ports_range, *port;
@@ -425,26 +649,26 @@ void ProcessLineAlias(dictionary d, char *filename, char *line, unsigned n_line)
 		short_alias[pos] = '\0';
 	}
 
-	key = malloc(sizeof(unsigned));
+	key = (unsigned *) malloc(sizeof(unsigned));
 	if (key == NULL)
 	{
-		fprintf(stderr,"ProcessLineAlias: Could not allocate memory for key!!\n");
+		fprintf(stderr,"processLineAlias: Could not allocate memory for key!!\n");
 		exit(1);		
 	}
-	info = malloc(sizeof(struct info_alias));
+	info = (struct info_alias *) malloc(sizeof(struct info_alias));
 	if (info == NULL)
 	{
-		fprintf(stderr,"ProcessLineAlias: Could not allocate memory for port value!!\n");
+		fprintf(stderr,"processLineAlias: Could not allocate memory for port value!!\n");
 		exit(1);		
 	}
-	info->alias = malloc(strlen(alias));
+	info->alias = (char *) malloc(strlen(alias)+1);
 	if (info->alias == NULL) {
-		fprintf(stderr,"ProcessLineAlias: Could not allocate memory for alias!!\n");
+		fprintf(stderr,"processLineAlias: Could not allocate memory for alias!!\n");
 		exit(1);				
 	}
-	info->short_alias = malloc(strlen(short_alias));
+	info->short_alias = malloc(strlen(short_alias)+1);
 	if (info->short_alias == NULL) {
-		fprintf(stderr,"ProcessLineAlias: Could not allocate memory for short alias!!\n");
+		fprintf(stderr,"processLineAlias: Could not allocate memory for short alias!!\n");
 		exit(1);				
 	}
 
@@ -481,13 +705,9 @@ int compareService(void *val1,  void *val2) {
     }
 }
 
-int compareServicePort(void *val1,  void *val2) {
-    struct value_dict *info1, *info2;
+int compareServicePort(struct value_dict *info1,  struct value_dict *info2) {
     unsigned key1, key2;
     struct ports_range *value1, *value2;
-
-    info1 = (struct value_dict *)val1;
-    info2 = (struct value_dict *)val2;
 
     key1 = *(unsigned *)(info1->key);
     key2 = *(unsigned *)(info2->key);
@@ -518,13 +738,74 @@ int compareServicePort(void *val1,  void *val2) {
 	}
 }
 
-int compareServiceAlias(void *val1,  void *val2) {
-    struct value_dict *info1, *info2;
+int compareAddress(void *val1,  void *val2) {
+	struct address_mask *value1, *value2;
+	in_addr_t address1, address2;
+
+	value1 = (struct address_mask *)val1;
+	value2 = (struct address_mask *)val2;
+
+	// Get address1 
+	address1 = ntohl(value1->address.s_addr);
+	// Get address2
+	address2 = ntohl(value2->address.s_addr);
+
+	// Addresses are in decremental ordering
+	// First hosts, then general networks
+	if (address1 > address2) {
+		return -1;
+	}
+	else {
+		if (address1 < address2) {
+			return 1;
+		}
+		else {
+			return 0;
+		}
+	}
+}
+
+int compareAddress2(void *val1,  void *val2) {
+	struct in_addr *in_address1;
+	struct address_mask *value2;
+	in_addr_t address1, address2, mask;
+	unsigned mask_bits;
+
+	in_address1 = (struct in_addr *)val1;
+	value2 = (struct address_mask *)val2;
+
+	// Get address1 in decimal format
+	address1 = ntohl(in_address1->s_addr);
+
+	// Get address2 in decimal format
+	address2 = ntohl(value2->address.s_addr);
+
+	// Is address2 a network address?
+	if (value2->mask != 32) {
+		// address2 is network address
+		// Extract network address of address1
+		mask = 0b11111111111111111111111111111111;
+		mask_bits = 32 - value2->mask;
+		mask = mask << mask_bits;
+		address1 = address1 & mask;
+	}	
+
+	if (address1 > address2) {
+		return -1;
+	}
+	else {
+		if (address1 < address2) {
+			return 1;
+		}
+		else {
+			return 0;
+		}
+	}	
+}
+
+int compareServiceAlias(struct value_dict *info1, struct value_dict *info2) {
     unsigned key1, key2;
     struct info_alias *value1, *value2;
-
-    info1 = (struct value_dict *)val1;
-    info2 = (struct value_dict *)val2;
 
     key1 = *(unsigned *)(info1->key);
     key2 = *(unsigned *)(info2->key);
@@ -555,13 +836,9 @@ int compareServiceAlias(void *val1,  void *val2) {
 	}
 }
 
-int Config_PortInRange(void *val1, void *val2) {
-    struct value_dict *info1, *info2;
+int config_PortInRange(struct value_dict *info1, struct value_dict *info2) {
     unsigned key1, key2;
     struct ports_range *value1, *value2;
-
-    info1 = (struct value_dict *)val1;
-    info2 = (struct value_dict *)val2;
 
     key1 = *(unsigned *)(info1->key);
     key2 = *(unsigned *)(info2->key);
@@ -586,13 +863,9 @@ int Config_PortInRange(void *val1, void *val2) {
 	}
 }
 
-int Config_PortInRangeAlias(void *val1, void *val2) {
-    struct value_dict *info1, *info2;
+int config_PortInRangeAlias(struct value_dict *info1, struct value_dict *info2) {
     unsigned key1, key2;
     struct info_alias *value1, *value2;
-
-    info1 = (struct value_dict *)val1;
-    info2 = (struct value_dict *)val2;
 
     key1 = *(unsigned *)(info1->key);
     key2 = *(unsigned *)(info2->key);
