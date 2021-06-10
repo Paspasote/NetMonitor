@@ -2,7 +2,6 @@
 #define __SNIFFER_H
 
 // Function prototypes
-void *sniffer(void *ptr_dev);
-
+void *sniffer(void *ptr_paramt);
 
 #endif
