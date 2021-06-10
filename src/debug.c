@@ -6,7 +6,7 @@
 #include <debug.h>
 
 // Global vars
-extern sem_t mutex_screen;
+extern sem_t mutex_debug_panel, mutex_screen;
 WINDOW *debug_panel;
 unsigned info_lines;
 
@@ -32,6 +32,13 @@ void debugMessage(char *message, attr_t *attr, unsigned prioridad)
     	return;
     }
 
+    // Get exclusive use of the panel
+    if (sem_wait(&mutex_debug_panel)) 
+    {
+        perror("debugMessageXY: sem_wait with mutex_debug_panel");
+        exit(1);
+    }
+
     // Calculate position of debug panel
     debug_lines = min(DEBUG_LINES, (int)((LINES-info_lines)*DEBUG_SIZE));
     posY_debug = LINES - debug_lines;
@@ -46,19 +53,26 @@ void debugMessage(char *message, attr_t *attr, unsigned prioridad)
     waddstr(debug_panel, message);
 
     // Refresh debug panel
-    prefresh(debug_panel, 0, 0, posY_debug, 0, min(posY_debug+DEBUG_LINES-1, LINES-1), min(COLS, COLS-1));
-
     if (sem_wait(&mutex_screen)) 
     {
         perror("debugMessage: sem_wait with mutex_screen");
         exit(1);
     }
-    doupdate();
+    prefresh(debug_panel, 0, 0, posY_debug, 0, min(posY_debug+DEBUG_LINES-1, LINES-1), min(COLS, COLS-1));
     if (sem_post(&mutex_screen))
     {
         perror("debugMessage: sem_post with mutex_screen");
         exit(1);        
     }
+
+    // Release panel
+    if (sem_post(&mutex_debug_panel))
+    {
+        perror("debugMessage: sem_post with mutex_debug_panel");
+        exit(1);        
+    }
+    //sleep(3);
+
 }
 
 void debugMessageXY(int row, int col, char *message, attr_t *attr, unsigned prioridad)
@@ -70,6 +84,13 @@ void debugMessageXY(int row, int col, char *message, attr_t *attr, unsigned prio
     // Message allowed?
     if (DEBUG < prioridad) {
         return;
+    }
+
+    // Get exclusive use of the panel
+    if (sem_wait(&mutex_debug_panel)) 
+    {
+        perror("debugMessageXY: sem_wait with mutex_debug_panel");
+        exit(1);
     }
 
     // Get current cursor position
@@ -91,19 +112,25 @@ void debugMessageXY(int row, int col, char *message, attr_t *attr, unsigned prio
     // Restore cursor position
     wmove(debug_panel, y, x);
 
-    // Refresh debug panel
-    prefresh(debug_panel, 0, 0, posY_debug, 0, min(posY_debug+DEBUG_LINES-1, LINES-1), min(COLS, COLS-1));
 
+     // Refresh debug panel
     if (sem_wait(&mutex_screen)) 
     {
-        perror("debugMessageXY: sem_wait with mutex_screen");
+        perror("debugMessage: sem_wait with mutex_screen");
         exit(1);
     }
-    doupdate();
+    prefresh(debug_panel, 0, 0, posY_debug, 0, min(posY_debug+DEBUG_LINES-1, LINES-1), min(COLS, COLS-1));
     if (sem_post(&mutex_screen))
     {
-        perror("debugMessageXY: sem_post with mutex_screen");
+        perror("debugMessage: sem_post with mutex_screen");
         exit(1);        
     }
 
+    // Release panel
+    if (sem_post(&mutex_debug_panel))
+    {
+        perror("debugMessageXY: sem_post with mutex_debug_panel");
+        exit(1);        
+    }
+    //sleep(3);
 }
