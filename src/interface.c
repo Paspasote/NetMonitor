@@ -8,15 +8,18 @@
 
 #include <debug.h>
 #include <misc.h>
+#include <NetMonitor.h>
 #include <PacketList.h>
 #include <DefaultView.h>
 #include <IPGroupedView.h>
+#include <OutboundView.h>
+
 #include <interface.h>
 
 // Constants
 
 // Panel sizes
-#define INFO_LINES		3
+#define INFO_LINES		5
 #define INFO_COLS		200
 #define RESULT_LINES	10000
 #define RESULT_COLS		200
@@ -26,17 +29,25 @@ void user_interface();
 void init_curses();
 void refreshTop();
 void getPanelDimensions();
+int getTextAttrLine(int row, chtype **text);
+void clearSelection();
+void setSelection();
 void selectionDown();
 void selectionUp();
 void selectionPageDown();
 void selectionPageUp();
 void selectionStart();
 void selectionEnd();
+void resetInterface();
 void quitInterface();
 void changeView();
 
 // global vars
 extern sem_t mutex_screen;
+extern time_t start;
+extern sem_t mutex_cont_requests;
+extern unsigned cont_requests;
+char *dev_internet, *dev_intranet;
 
 int reEntry = 0;
 int no_output = 0;
@@ -60,35 +71,50 @@ int terminal_rows;
 
 WINDOW *main_screen, *info_panel, *result_panel;
 
-void *interface()
-{
+void *interface(void *ptr_paramt) {
+
+	dev_internet = ((struct param_thread *)ptr_paramt)->internet_dev;
+	dev_intranet = ((struct param_thread *)ptr_paramt)->intranet_dev;
+
     if (visual_mode != -1) {
         init_curses();
     }
 
     /**************************************** DEBUG ****************************
-    printConfDict(services_allow);
-    printConfDict(services_warning);
+    printConfDict(incoming_services_allow);
+    printConfDict(incoming_services_warning);
     ***************************************************************************/
 
 	while (1)
 	{
         if (visual_mode != -1) {
+            /***************************  DEBUG ****************************/
+            char m[255];
+            sprintf(m, "En el bucle principal del interface......                                ");
+            debugMessageXY(3, 45, m, NULL, 1);
+            /*****************************************************************/
     		user_interface();
             refreshTop();
+            sleep(1);
         }
         else {            
             // Debug mode. Prints all info
             show_info();
         }
-
-        sleep(1);
 	}
 }
 
 void user_interface()
 {
-	char key;
+	int key;
+
+ 	/***************************  DEBUG ****************************/
+	{
+		char m[255];
+		sprintf(m, "Entrando en user_interface...                                     ");
+		debugMessageXY(3, 45, m, NULL, 1);
+	}
+	/*****************************************************************/
 
 	// User has pressed a key?
 	key = wgetch(result_panel);
@@ -97,7 +123,17 @@ void user_interface()
         case 'q':
         case 'Q':
             quitInterface();
-            exit(0);
+            pthread_exit(0);
+            break;
+
+        case 'f':
+        case 'F':
+            no_output = !no_output;
+            break;
+
+        case 'r':
+        case 'R':
+            resetInterface();
             break;
 
         case 'v':
@@ -108,43 +144,51 @@ void user_interface()
             }
             break;
 
-        case (char)KEY_DOWN:
+        case KEY_DOWN:
             if (result_selected_row < result_count_lines-1)
             {
                 selectionDown();
             }
             break;
 
-        case (char)KEY_UP:
+        case KEY_UP:
             if (result_selected_row >= 0) {
                 selectionUp();
             }
             break;
 
-        case (char)KEY_NPAGE:
+        case KEY_NPAGE:
             if (result_selected_row < result_count_lines-1) {
                 selectionPageDown();
             }
             break;
 
-        case (char)KEY_PPAGE:
+        case KEY_PPAGE:
             if (result_selected_row >= 0) {
                 selectionPageUp();
             }
             break;
 
-        case (char)KEY_END:
+        case KEY_END:
             if (result_selected_row < result_count_lines-1) {
                 selectionEnd();
             }
             break;
 
-        case (char)KEY_HOME:
+        case KEY_HOME:
             if (result_selected_row > 0) {
                 selectionStart();
             }
             break;
     }
+
+ 	/***************************  DEBUG ****************************/
+	{
+		char m[255];
+		sprintf(m, "Saliendo de user_interface...                                        ");
+		debugMessageXY(3, 45, m, NULL, 1);
+	}
+	/*****************************************************************/
 
 
     /*
@@ -185,6 +229,7 @@ void init_curses()
 	init_pair(2, COLOR_YELLOW, COLOR_BLACK);
     init_pair(3, COLOR_RED, COLOR_BLACK);
 
+
 	// Create debug panel
     init_debug_panel(INFO_LINES);
 
@@ -192,11 +237,11 @@ void init_curses()
 	getPanelDimensions();
 }
 
-void writeLineOnResult(char *text, attr_t *attr) 
+void writeLineOnResult(char *text, attr_t attr, int highlight) 
 {
     int x, y;
 
-    // Get current cursor position
+   // Get current cursor position
     getyx(result_panel, y, x);
 
     // Check if there are free lines
@@ -205,14 +250,18 @@ void writeLineOnResult(char *text, attr_t *attr)
     }
 
     // Write message on panel
-    if (attr != NULL) {
-        wattron(result_panel, *attr);
+    if (attr) {
+        wattrset(result_panel, attr);
+    }
+    if (highlight) {
+        wattron(result_panel, A_BOLD);
     }
 
     waddstr(result_panel, text);
 
-    if (attr != NULL) {
-    	wattroff(result_panel, *attr);
+
+    if (attr) {
+    	wattrset(result_panel, 0);
     }
  }
 
@@ -220,13 +269,16 @@ void refreshTop()
 {
     time_t now;
 	struct tm *t;
-	char s_time[25];
+	char s[150];
+    unsigned req;
 
-    if (no_output)
-    {
-        debugMessage("OUTPUT FREEZEED!!!!", COLOR_PAIR(0), 1);
-        return;
-    }
+ 	/***************************  DEBUG ****************************/
+	{
+		char m[255];
+		sprintf(m, "Entrando en refreshTop...                                        ");
+		debugMessageXY(3, 45, m, NULL, 1);
+	}
+	/*****************************************************************/
 
     // Avoid reentries
     if (reEntry)
@@ -244,49 +296,94 @@ void refreshTop()
 
     // Clear panels
     werase(info_panel);
-    werase(result_panel);
+    if (!no_output) {
+        werase(result_panel);
+    }
     wmove(info_panel, 0, 0);
     wmove(result_panel, 0, 0);
 
-    // Show time and options on info panel 
+    // Show info on info panel
+    if (sem_wait(&mutex_cont_requests)) 
+    {
+        perror("refreshTop: sem_wait with mutex_cont_requests");
+        exit(1);
+    }
+    req = cont_requests;
+    if (sem_post(&mutex_cont_requests))
+    {
+        perror("refreshTop: sem_post with mutex_cont_requests");
+        exit(1);
+    }
     now = time(NULL);
 	t = localtime(&now);
-	sprintf(s_time, "%02d/%02d/%4d %02d:%02d:%02d\n", t->tm_mday, t->tm_mon, 1900+t->tm_year, t->tm_hour, t->tm_min, t->tm_sec);
-    mvwaddstr(info_panel, 0, 0, s_time);
-    waddstr(info_panel, "V-Change View  Q-Exit\n");
-    whline(info_panel, '-', INFO_COLS);
+	sprintf(s, "%02d/%02d/%4d %02d:%02d:%02d   # Connections: %4d   Whois requests this day: %4u\n", t->tm_mday, t->tm_mon, 1900+t->tm_year, t->tm_hour, t->tm_min, t->tm_sec, result_count_lines, req);
+    mvwaddstr(info_panel, 0, 0, s);
+
+    // Show menu on info panel
+    waddstr(info_panel, "V-Change View  Q-Exit\n\n");
 
     // Show info with the view selected by user or with the default view
     switch (visual_mode) {
         case 0:
             // Default view. 
+            // Show header
+ 	        sprintf(s, "%-10s %-8s  %-7s %-13s %-15s  %15s:%-5s  %-2s  %-16s  %-s\n", "DATE", "TIME", "# HITS", "TOTAL TRANS.", "BANDWIDTH", "SOURCE_IP", "PORT", "CT", "NET NAME", "SERVICE");
+            waddstr(info_panel, s);
+           
+            // Show horizontal line
+            whline(info_panel, '-', INFO_COLS);
+
+            // Clear timeout connections
             DV_Purge();
-            DV_ShowInfo();
+
+            if (!no_output) {
+                // Show incoming connections sorted by # hits and recent hits
+                DV_ShowInfo();
+            }
             break;
         case 1:
-
             // Source IP grouped view. 
+            // Show header
+ 	        sprintf(s, "%-10s %-8s  %-7s %-13s %-15s  %15s  %-2s  %-16s    %-s\n", "DATE", "TIME", "# HITS", "TOTAL TRANS.", "BANDWIDTH", "DESTINATION IP", "CT", "NET NAME", "[#HITS]SERVICE");
+            waddstr(info_panel, s);
+           
+            // Show horizontal line
+            whline(info_panel, '-', INFO_COLS);
+
+            // Clear timeout connections
             IPG_Purge();
-            IPG_ShowInfo();
+
+            if (!no_output) {
+                // Show incoming connections grouped by IP and sorted by # hits and recent hits
+                IPG_ShowInfo();
+            }
+            break;
+        case 2:
+            // Outbound view
+            // Show header
+ 	        sprintf(s, "%-10s %-8s  %-7s %-13s %-15s  %15s  %15s  %-2s  %-16s  %-s\n", "DATE", "TIME", "# HITS", "TOTAL TRANS.", "BANDWIDTH", "SOURCE IP", "DESTINATION IP", "CT", "NET NAME", "SERVICE");
+            waddstr(info_panel, s);
+           
+            // Show horizontal line
+            whline(info_panel, '-', INFO_COLS);
+
+            // Clear timeout connections
+            OV_Purge();
+            if (!no_output) {
+                // Show outgoing intranet connections sorted by bandwidth and recent hits
+                OV_ShowInfo();
+            }
             break;
     }
-
+ 
     // _We never allow that selected row be after total rows
     if (result_selected_row > result_count_lines-1) {
         result_selected_row = result_count_lines-1;
     }
-
-
-    if (no_output)
-    {
-        reEntry = 0;
-        return;
-    }
-
     // If a row is selected on result panel, highlight it
     if (result_selected_row != -1)
     {
-        mvwchgat(result_panel, result_selected_row, 0, -1, A_REVERSE, COLOR_BLACK, NULL);
+        setSelection();
     }
 
     if (DEBUG > 0 && result_visible_rows > 0)
@@ -306,20 +403,29 @@ void refreshTop()
         pnoutrefresh(info_panel, 0, 0, 0, 0, min(INFO_LINES-1, LINES-1), min(INFO_COLS-1, COLS-1));
     }
 
+    // Refresh physical screen
     if (sem_wait(&mutex_screen)) 
     {
-        perror("writeLineOnResult: sem_wait with mutex_screen");
+        perror("refreshTop: sem_wait with mutex_screen");
         exit(1);
     }
     doupdate();
     if (sem_post(&mutex_screen))
     {
-        perror("writeLineOnResult: sem_post with mutex_screen");
+        perror("refreshTop: sem_post with mutex_screen");
         exit(1);        
     }
 
     reEntry = 0;
-    return;
+  	/***************************  DEBUG ****************************/
+	{
+		char m[255];
+		sprintf(m, "Saliendo de refreshTop...                                        ");
+		debugMessageXY(3, 45, m, NULL, 1);
+	}
+	/*****************************************************************/
+
+   return;
 }
 
 void getPanelDimensions()
@@ -400,6 +506,44 @@ void getPanelDimensions()
     }
 }
 
+int getTextAttrLine(int row, chtype **text) {
+    int nchars;
+
+    getPanelDimensions();
+    if (*text == NULL) {
+        *text = (chtype *)malloc(min(RESULT_COLS-1, COLS-1) * sizeof(chtype));
+        if (*text == NULL) {
+            fprintf(stderr,"getTextAttrLine: Could not allocate memory!!\n");
+            exit(1);				
+        }
+    }
+
+    nchars = mvwinchnstr(result_panel, row, 0, *text, min(RESULT_COLS-1, COLS-1));
+    return nchars;
+}
+
+void clearSelection() {
+    chtype c, attr, color;
+
+    c = mvwinch(result_panel, result_selected_row, 0);
+    color = (c & A_COLOR) >> 8;
+    attr = c & A_ATTRIBUTES;
+    attr = attr & (~A_COLOR);
+    attr = attr & (~A_REVERSE);
+    mvwchgat(result_panel, result_selected_row, 0, -1, attr, color, NULL);
+}
+
+void setSelection() {
+    chtype c, attr, color;
+
+    c = mvwinch(result_panel, result_selected_row, 0);
+    color = (c & A_COLOR) >> 8;
+    attr = c & A_ATTRIBUTES;
+    attr = attr & (~A_COLOR);
+    attr = attr | A_REVERSE;
+    mvwchgat(result_panel, result_selected_row, 0, -1, attr, color, NULL);
+}
+
 void selectionDown()
 {
     getPanelDimensions();
@@ -416,6 +560,9 @@ void selectionDown()
     }
     else
     {
+        // Clear selection to the line
+        clearSelection();
+
         result_selected_row++;
         // Have to scroll ?
         if (result_selected_row - result_top_row + 1 == result_visible_rows)
@@ -423,7 +570,29 @@ void selectionDown()
         	result_top_row++;
         }
     }
-    refreshTop();
+
+    // _We never allow that selected row be after total rows
+    if (result_selected_row > result_count_lines-1) {
+        result_selected_row = result_count_lines-1;
+    }
+
+
+    // Apply selection to the line
+    setSelection();
+/* 
+    // Refresh result panel with new selection
+    if (sem_wait(&mutex_screen)) 
+    {
+        perror("selectionDown: sem_wait with mutex_screen");
+        exit(1);
+    }
+    prefresh(result_panel, result_top_row, 0, result_start_posY, 0, result_end_posY, min(RESULT_COLS-1, COLS-1));
+    if (sem_post(&mutex_screen))
+    {
+        perror("selectionDown: sem_post with mutex_screen");
+        exit(1);        
+    }
+ */
 }
 
 void selectionUp()
@@ -434,6 +603,9 @@ void selectionUp()
     {
         return;
     }
+
+    // Clear selection to the line
+    clearSelection();
 
     if (result_selected_row == 0) {
     	result_selected_row = -1;
@@ -446,8 +618,24 @@ void selectionUp()
         	result_top_row--;
         }
         result_selected_row--;
+
+        // Apply selection to the line
+        setSelection();
     }
-    refreshTop();
+
+/*     // Refresh result panel with new selection
+    if (sem_wait(&mutex_screen)) 
+    {
+        perror("selectionDown: sem_wait with mutex_screen");
+        exit(1);
+    }
+    prefresh(result_panel, result_top_row, 0, result_start_posY, 0, result_end_posY, min(RESULT_COLS-1, COLS-1));
+    if (sem_post(&mutex_screen))
+    {
+        perror("selectionDown: sem_post with mutex_screen");
+        exit(1);        
+    }
+ */    
 }
 
 void selectionPageDown()
@@ -466,6 +654,9 @@ void selectionPageDown()
         result_selected_row = 0;
     }
     else {
+        // Clear selection to the line
+        clearSelection();
+
         // Calculate last visible row
         last_visible = result_top_row + result_visible_rows;
 
@@ -481,7 +672,22 @@ void selectionPageDown()
         }
     }
 
-    refreshTop();
+    // Apply selection to the line
+    setSelection();
+
+/*     // Refresh result panel with new selection
+    if (sem_wait(&mutex_screen)) 
+    {
+        perror("selectionDown: sem_wait with mutex_screen");
+        exit(1);
+    }
+    prefresh(result_panel, result_top_row, 0, result_start_posY, 0, result_end_posY, min(RESULT_COLS-1, COLS-1));
+    if (sem_post(&mutex_screen))
+    {
+        perror("selectionDown: sem_post with mutex_screen");
+        exit(1);        
+    }
+ */    
 }
 
 void selectionPageUp()
@@ -493,7 +699,10 @@ void selectionPageUp()
         return;
     }
 
-    if (result_selected_row == 0)
+    // Clear selection to the line
+    clearSelection();
+
+   if (result_selected_row == 0)
     {
     	result_selected_row = -1;
     }
@@ -509,8 +718,23 @@ void selectionPageUp()
             // Scroll is not needed. We just go to first row
             result_selected_row = 0;
         }
+        // Apply selection to the line
+        setSelection();
     }
-    refreshTop();
+
+/*     // Refresh result panel with new selection
+    if (sem_wait(&mutex_screen)) 
+    {
+        perror("selectionDown: sem_wait with mutex_screen");
+        exit(1);
+    }
+    prefresh(result_panel, result_top_row, 0, result_start_posY, 0, result_end_posY, min(RESULT_COLS-1, COLS-1));
+    if (sem_post(&mutex_screen))
+    {
+        perror("selectionDown: sem_post with mutex_screen");
+        exit(1);        
+    }
+ */    
 }
 
 void selectionStart()
@@ -522,9 +746,28 @@ void selectionStart()
         return;
     }
 
+    // Clear selection to the line
+    clearSelection();       
+
 	result_selected_row = 0;
 	result_top_row = 0;
-    refreshTop();
+
+    // Apply selection to the line
+    setSelection();
+
+/*     // Refresh result panel with new selection
+    if (sem_wait(&mutex_screen)) 
+    {
+        perror("selectionDown: sem_wait with mutex_screen");
+        exit(1);
+    }
+    prefresh(result_panel, result_top_row, 0, result_start_posY, 0, result_end_posY, min(RESULT_COLS-1, COLS-1));
+    if (sem_post(&mutex_screen))
+    {
+        perror("selectionDown: sem_post with mutex_screen");
+        exit(1);        
+    }
+ */    
 }
 
 void selectionEnd()
@@ -536,11 +779,43 @@ void selectionEnd()
         return;
     }
 
+    if (result_selected_row != -1)  {
+        // Clear selection to the line
+        clearSelection();
+    }
+
     result_selected_row = result_count_lines-1;
     result_top_row =  max(0, result_count_lines - result_visible_rows);
-    refreshTop();
+
+    // Apply selection to the line
+    setSelection();
+
+/*     // Refresh result panel with new selection
+    if (sem_wait(&mutex_screen)) 
+    {
+        perror("selectionDown: sem_wait with mutex_screen");
+        exit(1);
+    }
+    prefresh(result_panel, result_top_row, 0, result_start_posY, 0, result_end_posY, min(RESULT_COLS-1, COLS-1));
+    if (sem_post(&mutex_screen))
+    {
+        perror("selectionDown: sem_post with mutex_screen");
+        exit(1);        
+    }
+ */    
 }
     
+void resetInterface()
+{
+    // Paneles:
+    // info_panel
+    // result_panel
+    // debug_panel  (solo si DEBUG > 0)
+    clearok(main_screen,  true);
+    //  wclear(main_screen);
+    wrefresh(main_screen);
+}
+
 void quitInterface()
 {
     //rt.stop()
@@ -554,21 +829,20 @@ void quitInterface()
 void changeView() 
 {
     char key;
+    int new_visual_mode;
 
-    mvwaddstr(info_panel, 0, 0, "1-Default view   2-Grouped by source IP   (Any other key to abort)\n");
+    mvwaddstr(info_panel, 2, 0, "1-Default view   2-Grouped by source IP   3-NAT view  (Any other key to abort)\n");
     waddstr(info_panel, "IF VIEW CHANGES ALL INFO WILL BE RESET!!\n");
 
     // Refresh panels
     getPanelDimensions();
 
-    pnoutrefresh(info_panel, 0, 0, 0, 0, min(INFO_LINES-1, LINES-1), min(INFO_COLS-1, COLS-1));
- 
     if (sem_wait(&mutex_screen)) 
     {
         perror("changeView: sem_wait with mutex_screen");
         exit(1);
     }
-    doupdate();
+    prefresh(info_panel, 0, 0, 0, 0, min(INFO_LINES-1, LINES-1), min(INFO_COLS-1, COLS-1));
     if (sem_post(&mutex_screen))
     {
         perror("changeView: sem_post with mutex_screen");
@@ -578,7 +852,21 @@ void changeView()
     key = wgetch(info_panel);
 
     // We do nothing if view has not been changed or key is not valid
-    if (key - '1' == visual_mode || key < '1' || key > '2') {
+    new_visual_mode = key - '1';
+    if (new_visual_mode == visual_mode || key < '1' || key > '3') {
+        return;
+    }
+
+    // If visual mode needs intranet device and it doesn't set then return
+    if (new_visual_mode == 2 && dev_intranet == NULL) {
+        // Can't do NAT view. There is not intranet device
+        /***************************  DEBUG ***************************/
+        {
+            char m[100];
+            sprintf(m, "Can't change to NAT view. There is not intranet device");
+            debugMessageXY(5, 0, m, NULL, 1);
+        }
+        /****************************************************************/
         return;
     }
 
@@ -586,15 +874,43 @@ void changeView()
     switch (visual_mode) {
         case 0:
             // Default view
+            // Can't do NAT view. There is not intranet device
+            /***************************  DEBUG ***************************/
+            {
+                char m[100];
+                sprintf(m, "Resetting view 0");
+                debugMessageXY(2, 0, m, NULL, 1);
+            }
+            /****************************************************************/
             DV_Reset();
             break;
 
         case 1:
             // Grouped source IP view
+            // Can't do NAT view. There is not intranet device
+            /***************************  DEBUG ***************************/
+            {
+                char m[100];
+                sprintf(m, "Resetting view 1");
+                debugMessageXY(2, 0, m, NULL, 1);
+            }
             IPG_Reset();
+            break;
+
+        case 2:
+            // NAT view
+            // Can't do NAT view. There is not intranet device
+            /***************************  DEBUG ***************************/
+            {
+                char m[100];
+                sprintf(m, "Resetting view 2");
+                debugMessageXY(2, 0, m, NULL, 1);
+            }
+            OV_Reset();
             break;
     }
 
     // Change view
-    visual_mode = key - '1';
+    start = time(NULL);
+    visual_mode = new_visual_mode;
 }

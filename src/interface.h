@@ -7,7 +7,7 @@
 
 // Function prototypes
 void *interface();
-void writeLineOnResult(char *text, attr_t *attr);
+void writeLineOnResult(char *text, attr_t attr, int bold);
 
 
 #endif
