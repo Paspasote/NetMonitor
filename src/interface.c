@@ -316,7 +316,14 @@ void refreshTop()
     }
     now = time(NULL);
 	t = localtime(&now);
-	sprintf(s, "%02d/%02d/%4d %02d:%02d:%02d   # Connections: %4d   Whois requests this day: %4u\n", t->tm_mday, t->tm_mon, 1900+t->tm_year, t->tm_hour, t->tm_min, t->tm_sec, result_count_lines, req);
+    if (!no_output)
+    {
+	    sprintf(s, "%02d/%02d/%4d %02d:%02d:%02d   # Connections: %-4d   Whois requests this day: %-4u\n", t->tm_mday, t->tm_mon, 1900+t->tm_year, t->tm_hour, t->tm_min, t->tm_sec, result_count_lines, req);
+    }
+    else
+    {
+        strcpy(s, "                                        SCREEN FREEZED !!!!                                      \n");
+    }
     mvwaddstr(info_panel, 0, 0, s);
 
     // Show menu on info panel
