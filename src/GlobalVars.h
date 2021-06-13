@@ -1,17 +1,9 @@
-#ifndef __NETMONITOR_H
-#define __NETMONITOR_H
+#ifndef __GLOBALVARS_H
+#define __GLOBALVARS_H
 
-#include <time.h>
-#include <net/ethernet.h>
-#include <netinet/ip.h>
-#include <netinet/ip_icmp.h>
-#include <netinet/tcp.h>
-#include <netinet/udp.h>
-#include <netinet/igmp.h>
 #include <netinet/in.h>
-#include <arpa/inet.h>
 
-struct param_thread
+struct const_global_vars
 {
     char *internet_dev;      // network device (internet size) to sniffe
     char *intranet_dev;      // network device (intranet size) to sniffe
@@ -19,6 +11,7 @@ struct param_thread
     bpf_u_int32 own_mask_internet;  // Mask address of internet device
     bpf_u_int32 own_ip_intranet;    // IP address of intranet device
     bpf_u_int32 own_mask_intranet;  // Mask address of intranet device
+
 };
 
 #endif

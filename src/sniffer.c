@@ -26,23 +26,21 @@
 
 
 // Function prototypes
-pcap_t * change_sniffer_type(int sniffer_type, char *dev_internet, char *dev_intranet);
+pcap_t * change_sniffer_type(int sniffer_type);
 void catch_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet);
 
 // Global vars
 extern int visual_mode;
 int ll_header_type;
 int last_visual_mode=-2;
-bpf_u_int32 own_ip;
+struct param_thread *dev_config;
 
 void *sniffer(void *ptr_paramt) {
-	char *dev_internet, *dev_intranet;
 	pcap_t *handle=NULL;
 	int ret_loop_val;
 	int last_sniffer_type=0, sniffer_type;
 
-	dev_internet = ((struct param_thread *)ptr_paramt)->internet_dev;
-	dev_intranet = ((struct param_thread *)ptr_paramt)->intranet_dev;
+	dev_config = (struct para_thread *)ptr_paramt;
 
 	// Main loop for getting packets
 	do {	
@@ -59,7 +57,7 @@ void *sniffer(void *ptr_paramt) {
 			// Must sniffer type be changed?
 			if (last_sniffer_type != sniffer_type) {
 				// Yes
-				handle = change_sniffer_type(sniffer_type, dev_internet, dev_intranet);
+				handle = change_sniffer_type(sniffer_type);
 				last_sniffer_type = sniffer_type;
 			}
 			last_visual_mode = visual_mode;
@@ -83,7 +81,8 @@ void *sniffer(void *ptr_paramt) {
 
 }
 
-pcap_t * change_sniffer_type(int sniffer_type, char *dev_internet, char *dev_intranet) {
+pcap_t * change_sniffer_type(int sniffer_type)
+{
 	char *dev_net;
 	char errbuf[PCAP_ERRBUF_SIZE];
 	pcap_t *handle;
@@ -95,19 +94,13 @@ pcap_t * change_sniffer_type(int sniffer_type, char *dev_internet, char *dev_int
 
 	switch (sniffer_type) {
 		case 1:
-			// Inspect all packets from internet
-			dev_net = dev_internet;
+			// Inspect all packets from internet device
+			dev_net = dev_config->internet_dev;
 
-			// Get network device address
-			if (pcap_lookupnet(dev_net, &own_ip, &mask, errbuf) == -1) {
-				own_ip = 0;
-				mask = 0;
-			}
-			inet_ntop(AF_INET, &own_ip, s_ownip, INET_ADDRSTRLEN);
-			inet_ntop(AF_INET, &mask, s_netmask, INET_ADDRSTRLEN);
+			inet_ntop(AF_INET, &dev_config->own_ip_internet, s_ownip, INET_ADDRSTRLEN);
+			inet_ntop(AF_INET, &dev_config->own_mask_internet, s_netmask, INET_ADDRSTRLEN);
 
-			// Set filter
-			
+			// Set filter			
 			strcpy(filter_exp, "");
 
 			break;
@@ -115,17 +108,12 @@ pcap_t * change_sniffer_type(int sniffer_type, char *dev_internet, char *dev_int
 			// Inspect outgoing packets from intranet to internet
 
 			// Is there intranet device?
-			if (dev_intranet == NULL) return NULL;
+			if (dev_config->intranet_dev == NULL) return NULL;
 
-			dev_net = dev_intranet;
+			dev_net = dev_config->intranet_dev;
 
-			// Get network device address
-			if (pcap_lookupnet(dev_net, &own_ip, &mask, errbuf) == -1) {
-				own_ip = 0;
-				mask = 0;
-			}
-			inet_ntop(AF_INET, &own_ip, s_ownip, INET_ADDRSTRLEN);
-			inet_ntop(AF_INET, &mask, s_netmask, INET_ADDRSTRLEN);
+			inet_ntop(AF_INET, &dev_config->intranet_dev, s_ownip, INET_ADDRSTRLEN);
+			inet_ntop(AF_INET, &dev_config->own_mask_intranet, s_netmask, INET_ADDRSTRLEN);
 
 			// Set filter
 			sprintf(filter_exp, "src net %s mask %s and not dst net %s mask %s", s_ownip, s_netmask, s_ownip, s_netmask);
@@ -133,7 +121,7 @@ pcap_t * change_sniffer_type(int sniffer_type, char *dev_internet, char *dev_int
 			break;
 	}
 
-	// Try to open the internetnet device for sniffing
+	// Try to open the device for sniffing
 	handle = pcap_open_live(dev_net, BUFSIZ, 0, 1000, errbuf);
 	// It works??
 	if (handle == NULL)
@@ -267,13 +255,13 @@ void catch_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *
 		case 0:
 			// Default view. Store packet using DefaultView Module
 			if (last_visual_mode == visual_mode) {
-				DV_addPacket(own_ip, ethernet, ip, icmp_header, tcp_header, udp_header, igmp_header, total_bytes, priority);
+				DV_addPacket(own_ip_internet, ethernet, ip, icmp_header, tcp_header, udp_header, igmp_header, total_bytes, priority);
 			}
 			break;
 		case 1:
 			// IP Source view. Store packet using IPGroupedView Module
 			if (last_visual_mode == visual_mode) {
-				IPG_addPacket(own_ip, ethernet, ip, icmp_header, tcp_header, udp_header, igmp_header, total_bytes, priority);
+				IPG_addPacket(own_ip_internet, ethernet, ip, icmp_header, tcp_header, udp_header, igmp_header, total_bytes, priority);
 			}
 			break;
 		case 2:

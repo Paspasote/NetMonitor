@@ -32,10 +32,13 @@ struct DV_info {
 	float bandwidth;					/* Current connection bandwith */
 
 	char country[MAX_LEN_COUNTRY+1];	/* Country code where this packet is coming from */
-	char netname[MAX_VISIBLE_NETNAME+1];	/* Net name this packet is coming from */  
+	char netname[MAX_VISIBLE_NETNAME+1];	/* Net name this packet is coming from */
+
+	char flags[6];						// Extra source address info
 
 	int response;						/* 1 if incoming connection is a respond of a previous outcoming 
 										   0 in another case */
+	int stablished;						/* 1 if incoming connection is stablished one, 0 in another case */
 
    	uint8_t ip_protocol;				/* protocol */
 
@@ -65,6 +68,8 @@ struct DV_info {
 struct DV_info_outbound {
 	time_t time;						/* Time stamp of last package */
 
+	int starting;						/* 1 if we started comm, 0 if not */
+
    	uint8_t ip_protocol;				/* protocol */
 
 	struct in_addr ip_src;				/* source IP address */
@@ -85,7 +90,6 @@ struct DV_info_outbound {
 		struct {
         	uint16_t sport;				/* source port */
         	uint16_t dport;				/* destination port */
-			int started;				/* 1 if we started comm, 0 if not */
 		} udp_info;
 
 	} shared_info;
@@ -93,7 +97,7 @@ struct DV_info_outbound {
 
 // Function prototypes
 void DV_Reset();
-void DV_addPacket(in_addr_t own_ip, const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
+void DV_addPacket(in_addr_t own_ip_internet, const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
 				  const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header, unsigned n_bytes, unsigned priority);
 void DV_ShowInfo();
 void DV_Purge();

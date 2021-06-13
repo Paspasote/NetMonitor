@@ -58,7 +58,7 @@ CPPFLAGS := $(INC_FLAGS) -g -Wall -Wextra -pedantic
 # linker flags
 LDFLAGS := -ggdb
 # linker libraries
-LDLIBS := -lcurses -lpcap -lpthread
+LDLIBS := -lcurses -lpcap -lpthread -lip4tc
 # flags required for dependency generation; passed to compilers
 DEPFLAGS = -MT $@ -MD -MP -MF $(DEPDIR)/$*.Td
 

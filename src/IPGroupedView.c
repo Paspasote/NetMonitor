@@ -404,7 +404,7 @@ void IPG_ShowServices(struct IPG_info *info) {
 }
 
 
-void IPG_addPacket(in_addr_t own_ip, const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
+void IPG_addPacket(in_addr_t own_ip_internet, const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
 				   const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header, unsigned n_bytes, unsigned priority) {
 	time_t now;
 	struct IPG_info *info, *new_info;
@@ -418,7 +418,7 @@ void IPG_addPacket(in_addr_t own_ip, const struct ether_header *ethernet,const s
 	}
 
 	// Inbound or Outbound??
-	if (ip->ip_src.s_addr == own_ip) {
+	if (ip->ip_src.s_addr == own_ip_internet) {
 		// Outbound
 		IPG_addPacket_outbound(ip, tcp_header, udp_header);
 		return;

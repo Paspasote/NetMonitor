@@ -20,6 +20,7 @@
 #include <sniffer.h>
 #include <interface.h>
 #include <WhoIs.h>
+#include <iptables.h>
 
 // Global vars
 sem_t mutex_packages_list, mutex_outbound_list;
@@ -33,6 +34,7 @@ int main(int argc, char *argv[])
 {
 	pthread_t thread_sniffer, thread_interface;
 	struct param_thread paramt;
+	char errbuf[PCAP_ERRBUF_SIZE];
 
 	// Check number of parameters
 	if (argc != 2 && argc != 3) 
@@ -45,6 +47,20 @@ int main(int argc, char *argv[])
 	// Save the net device
 	paramt.internet_dev = argv[1];
 	paramt.intranet_dev = argv[2];
+
+	// Get network device address
+	if (pcap_lookupnet(argv[1], &paramt.own_ip_internet, &paramt.own_mask_internet, errbuf) == -1) {
+		fprintf(stderr, "Can't get own IP address from internet device %s", argv[1]);
+		exit(EXIT_FAILURE);
+	}
+
+	// Get network intranet address
+	if (argv[2] != NULL)
+	{
+	if (pcap_lookupnet(argv[2], &paramt.own_ip_intranet, &paramt.own_mask_intranet errbuf) == -1) {
+		fprintf(stderr, "Can't get own IP address from intranet device %s", argv[2]);
+		exit(EXIT_FAILURE);
+	}
 
 	// Initialize semaphores
 	if (sem_init(&mutex_packages_list, 0, 1))
@@ -88,6 +104,9 @@ int main(int argc, char *argv[])
 
  	// Read config files
 	Configuration();
+
+	// Initialize iptables
+	initIPtables();
 
 	// Get starting time
 	start = time(NULL);

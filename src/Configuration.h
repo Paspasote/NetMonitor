@@ -18,6 +18,19 @@
 #define MAX_INTERVAL_BANDWIDTH_OUTGOING 10
 #define THRESHOLD_ESTABLISHED_CONNECTIONS	30
 
+#define FLAG_IPTABLES_POS	0
+#define FLAG_NEW_POS		2
+#define FLAG_RESPOND_POS	2
+#define FLAG_STABLISHED_POS	2
+
+#define FLAG_BAN			'B'
+#define FLAG_ACCEPT			'A'
+#define FLAG_DROP			'D'
+#define FLAG_REJECT			'R'
+#define FLAG_NEW			'N'
+#define FLAG_RESPOND		'R'
+#define FLAG_STABLISHED		'S'
+
 // Function prototypes
 void Configuration();
 int incoming_packetAllowed(unsigned protocol, unsigned port);

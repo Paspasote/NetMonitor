@@ -126,10 +126,6 @@ int outgoing_packetAllowed(struct in_addr address, unsigned protocol, unsigned p
 		priority_address = 1;
 	}
 
-
-	if (no_tcp_udp) {
-		return priority_address;
-	}
 	
 	if (no_tcp_udp) {
 		return priority_address;
@@ -461,7 +457,7 @@ void processHostLine(sorted_list l, char *filename, char *line, unsigned n_line)
 		if (byte != 32) {
 			// Check network address. Host part of the address must be zero
 			inet_pton(AF_INET, s_address, &address_aux);
-			mask = 0b11111111111111111111111111111111;
+			mask = 0xFFFFFFFF;
 			mask = mask >> byte;
 			if (ntohl(address_aux.s_addr) & mask) {
 				fprintf(stderr, "Bad config file (%s) at line %u: Bad network address (%s/%s)\n", filename, n_line, s_address, s_mask);
@@ -784,7 +780,7 @@ int compareAddress2(void *val1,  void *val2) {
 	if (value2->mask != 32) {
 		// address2 is network address
 		// Extract network address of address1
-		mask = 0b11111111111111111111111111111111;
+		mask = 0xFFFFFFFF;
 		mask_bits = 32 - value2->mask;
 		mask = mask << mask_bits;
 		address1 = address1 & mask;

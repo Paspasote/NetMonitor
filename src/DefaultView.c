@@ -13,6 +13,7 @@
 #include <SharedSortedList.h>
 #include <Configuration.h>
 #include <WhoIs.h>
+#include <iptables.h>
 #include <interface.h>
 #include <DefaultView.h>
 
@@ -24,6 +25,7 @@ extern sem_t mutex_outbound_list;
 extern sem_t mutex_bd_whois;
 extern time_t start;
 extern int result_count_lines;
+char *dev_internet, *dev_intranet;
 
 // Function prototypes
 int DV_isValidList();
@@ -173,6 +175,45 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 			{
 				updateWhoisInfo(node, info->ip_src.s_addr, info->country, info->netname);
 			}
+			// Check if we have to update iptables flag
+			if (info->flags[FLAG_IPTABLES_POS] == '?')
+			{
+				switch (actionIncoming(dev_internet, info->ip_protocol, info->ip_src.s_addr, info->shared_info.icmp_info.code, 
+									   info->ip_dst.s_addr, info->shared_info.icmp_info.type, 0, !info->stablished, "INPUT"))
+				{
+					case -1:
+						info->flags[FLAG_IPTABLES_POS] = ' ';
+						break;
+					case 1:
+						info->flags[FLAG_IPTABLES_POS] = FLAG_ACCEPT;
+						break;
+					case 2:
+						info->flags[FLAG_IPTABLES_POS] = FLAG_DROP;
+						break;
+					case 3:
+						info->flags[FLAG_IPTABLES_POS] = FLAG_REJECT;
+						break;
+					case 4:
+						info->flags[FLAG_IPTABLES_POS] = FLAG_BAN;
+						break;
+				}
+			}
+			// Update Respond/Stablished flag
+			if (info->response)
+			{
+				info->flags[FLAG_RESPOND_POS] = FLAG_RESPOND;
+			}
+			else
+			{
+				if (info->stablished)
+				{
+					info->flags[FLAG_STABLISHED_POS] = FLAG_STABLISHED;
+				}
+				else
+				{
+					info->flags[FLAG_NEW_POS] = FLAG_NEW;
+				}
+			}
 
 			// Generate line info
 			strcpy(s_protocol, "icmp");
@@ -185,7 +226,7 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 			if (!strcmp(s_icmp, "")) {
 				sprintf(s_icmp, " [Unknown] Type: %u", info->shared_info.icmp_info.type);
 			}
-			sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s        %2s  %-16s  %-5s%s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, info->country, info->netname, s_protocol, s_icmp);
+			sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s       %-5s  %2s  %-16s  %-5s%s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, info->flags, info->country, info->netname, s_protocol, s_icmp);
 			break;
 		case IPPROTO_TCP:
 			if (now - info->time >= TCP_VISIBLE_TIMEOUT) {
@@ -199,6 +240,47 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 			{
 				updateWhoisInfo(node, info->ip_src.s_addr, info->country, info->netname);
 			}
+			// Check if we have to update iptables flag
+			if (info->flags[FLAG_IPTABLES_POS] == '?')
+			{
+				switch (actionIncoming(dev_internet, info->ip_protocol, info->ip_src.s_addr, info->shared_info.tcp_info.sport, 
+									   info->ip_dst.s_addr, info->shared_info.tcp_info.dport, info->shared_info.tcp_info.flags, 
+									   !info->stablished, "INPUT"))
+				{
+					case -1:
+						info->flags[FLAG_IPTABLES_POS] = ' ';
+						break;
+					case 1:
+						info->flags[FLAG_IPTABLES_POS] = FLAG_ACCEPT;
+						break;
+					case 2:
+						info->flags[FLAG_IPTABLES_POS] = FLAG_DROP;
+						break;
+					case 3:
+						info->flags[FLAG_IPTABLES_POS] = FLAG_REJECT;
+						break;
+					case 4:
+						info->flags[FLAG_IPTABLES_POS] = FLAG_BAN;
+						break;
+				}
+			}
+			// Update Respond/Stablished flag
+			if (info->response)
+			{
+				info->flags[FLAG_RESPOND_POS] = FLAG_RESPOND;
+			}
+			else
+			{
+				if (info->stablished)
+				{
+					info->flags[FLAG_STABLISHED_POS] = FLAG_STABLISHED;
+				}
+				else
+				{
+					info->flags[FLAG_NEW_POS] = FLAG_NEW;
+				}
+			}
+
 
 			// Generate line info
 			strcpy(s_protocol, "tcp");
@@ -208,15 +290,15 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 			}
 			service_alias = serviceAlias(info->ip_protocol, info->shared_info.tcp_info.dport);
 			if (service_alias != NULL && strcmp(service_alias, "")) {
-				sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s  %2s  %-16s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->country, info->netname, service_alias);				
+				sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, service_alias);				
 			}
 			else {
 				servinfo = getservbyport(htons(info->shared_info.tcp_info.dport), s_protocol);
 				if (servinfo != NULL && servinfo->s_name != NULL && strcmp(servinfo->s_name, "")) {
-					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s  %2s  %-16s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->country, info->netname, servinfo->s_name);
+					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, servinfo->s_name);
 				}
 				else {
-					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s  %2s  %-16s  %-5s%5u\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->country, info->netname, s_protocol, info->shared_info.tcp_info.dport);				
+					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %-5s%5u\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, s_protocol, info->shared_info.tcp_info.dport);				
 				}
 			}
 			break;
@@ -232,6 +314,45 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 			{
 				updateWhoisInfo(node, info->ip_src.s_addr, info->country, info->netname);
 			}
+			// Check if we have to update iptables flag
+			if (info->flags[FLAG_IPTABLES_POS] == '?')
+			{
+				switch (actionIncoming(dev_internet, info->ip_protocol, info->ip_src.s_addr, info->shared_info.udp_info.sport, 
+									   info->ip_dst.s_addr, info->shared_info.udp_info.dport, 0, !info->stablished, "INPUT"))
+				{
+					case -1:
+						info->flags[FLAG_IPTABLES_POS] = ' ';
+						break;
+					case 1:
+						info->flags[FLAG_IPTABLES_POS] = FLAG_ACCEPT;
+						break;
+					case 2:
+						info->flags[FLAG_IPTABLES_POS] = FLAG_DROP;
+						break;
+					case 3:
+						info->flags[FLAG_IPTABLES_POS] = FLAG_REJECT;
+						break;
+					case 4:
+						info->flags[FLAG_IPTABLES_POS] = FLAG_BAN;
+						break;
+				}
+			}
+			// Update Respond/Stablished flag
+			if (info->response)
+			{
+				info->flags[FLAG_RESPOND_POS] = FLAG_RESPOND;
+			}
+			else
+			{
+				if (info->stablished)
+				{
+					info->flags[FLAG_STABLISHED_POS] = FLAG_STABLISHED;
+				}
+				else
+				{
+					info->flags[FLAG_NEW_POS] = FLAG_NEW;
+				}
+			}
 
 			// Generate line info
 			strcpy(s_protocol, "udp");
@@ -242,15 +363,15 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 			service_alias = serviceAlias(info->ip_protocol, info->shared_info.udp_info.dport);
 			if (service_alias != NULL && strcmp(service_alias, "")) {
 				//sprintf(line, "%s   [%05lu] %s [%8.2f KB/s]  %22s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, src_ip_port, service_alias);				
-				sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s  %2s  %-16s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->country, info->netname, service_alias);				
+				sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, service_alias);				
 			}
 			else {
 				servinfo = getservbyport(htons(info->shared_info.udp_info.dport), s_protocol);
 				if (servinfo != NULL && servinfo->s_name != NULL && strcmp(servinfo->s_name, "")) {
-					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s  %2s  %-16s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->country, info->netname, servinfo->s_name);
+					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, servinfo->s_name);
 				}
 				else {
-					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s  %2s  %-16s  %-5s%5u\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->country, info->netname, s_protocol, info->shared_info.udp_info.dport);				
+					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %-5s%5u\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, s_protocol, info->shared_info.udp_info.dport);				
 				}
 			}
 			break;	
@@ -273,14 +394,13 @@ void DV_ShowInfo() {
 	for_eachNode_shared_sorted_list(DV_l, DV_ShowElement, NULL);
 }
 
-void DV_addPacket(in_addr_t own_ip, const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
+void DV_addPacket(in_addr_t own_ip_internet, const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
 	const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header, unsigned n_bytes, unsigned priority) {
 	time_t now;
 	struct DV_info *info, *new_info;
 	struct DV_info_outbound info_outbound;
 	struct node_shared_sorted_list *node, *node_reverse;
 	struct DV_info_bandwidth *info_bandwidth;
-	uint16_t src_port, dst_port;
 	int syn;
 
 	// Protocol wanted??
@@ -289,7 +409,7 @@ void DV_addPacket(in_addr_t own_ip, const struct ether_header *ethernet,const st
 	}
 
 	// Inbound or Outbound??
-	if (ip->ip_src.s_addr == own_ip) {
+	if (ip->ip_src.s_addr == own_ip_internet) {
 		// Outbound
 		DV_addPacket_outbound(ip, tcp_header, udp_header);
 		return;
@@ -341,8 +461,6 @@ void DV_addPacket(in_addr_t own_ip, const struct ether_header *ethernet,const st
 			new_info->shared_info.tcp_info.flags = tcp_header->th_flags;
 			info_outbound.shared_info.tcp_info.sport = new_info->shared_info.tcp_info.dport;
 			info_outbound.shared_info.tcp_info.dport = new_info->shared_info.tcp_info.sport;
-			src_port = new_info->shared_info.tcp_info.sport;
-			dst_port = new_info->shared_info.tcp_info.dport;
 			break;
 		case IPPROTO_UDP:
 			// Store source and destination port
@@ -350,8 +468,6 @@ void DV_addPacket(in_addr_t own_ip, const struct ether_header *ethernet,const st
 			new_info->shared_info.udp_info.dport = ntohs(udp_header->uh_dport);
 			info_outbound.shared_info.udp_info.sport = new_info->shared_info.udp_info.dport;
 			info_outbound.shared_info.udp_info.dport = new_info->shared_info.udp_info.sport;
-			src_port = new_info->shared_info.udp_info.sport;
-			dst_port = new_info->shared_info.udp_info.dport;
 			break;	
 	}
 
@@ -365,16 +481,24 @@ void DV_addPacket(in_addr_t own_ip, const struct ether_header *ethernet,const st
 		if (ip->ip_p == IPPROTO_ICMP) {
 			// Never can't be a respond
 			new_info->response = 0;
+			new_info->stablished = 0;
 		}
 		else {
 			// It is a respond if there is a relative outgoing connection
+			// and is marked as a starting connection
 			node_reverse = NULL;
 			if (DV_isValidList_outbound()) {
 				node_reverse = exclusiveFind_shared_sorted_list(DV_l_outbound, &info_outbound, NULL);
-			}
+			}			
 			//new_info->response = node_reverse != NULL && (ip->ip_p == IPPROTO_TCP || ((struct DV_info_outbound *)node_reverse->info)->shared_info.udp_info.started);
-			new_info->response = node_reverse != NULL;
+			if (node_reverse != NULL)
+			{
+				requestReadNode_shared_sorted_list(node_reverse);
+			}
+			new_info->response = node_reverse != NULL && ((struct DV_info_outbound *)node_reverse->info)->starting && !syn;
+			new_info->stablished = node_reverse != NULL;
 			if (node_reverse != NULL) {
+				leaveReadNode_shared_sorted_list(node_reverse);
 				leaveNode_shared_sorted_list(DV_l_outbound, node_reverse);
 			}
 		}
@@ -386,10 +510,13 @@ void DV_addPacket(in_addr_t own_ip, const struct ether_header *ethernet,const st
 		info->total_bytes = 0;
 		strcpy(info->country, "");
 		strcpy(info->netname, "");
+		strcpy(info->flags, "?    ");
 	}
 	else {
 		// Connection already exists. Get its information
 		info = (struct DV_info *) node->info;
+		// Free new info
+		free(new_info);
 		// Request write access
 		requestWriteNode_shared_sorted_list(node);
 		if (syn) {
@@ -397,26 +524,27 @@ void DV_addPacket(in_addr_t own_ip, const struct ether_header *ethernet,const st
 			clear_all_double_list(info->last_connections, 1, NULL, NULL);
 			info->total_bytes = 0;
 			info->response = 0;
+			info->stablished = 0;
 		}
-		else {
-			if (!info->response && ip->ip_p != IPPROTO_ICMP && src_port < 1024 && dst_port >= 1024) {
-				// Not a response connection
-				// We recheck if it is a response connection if
-				// src port < 1024 and dst port >= 1024
-				// Is there NOW a relative outgoing connection ?
-				node_reverse = NULL;
-				if (DV_isValidList_outbound()) {
-					node_reverse = exclusiveFind_shared_sorted_list(DV_l_outbound, &info_outbound, NULL);
-				}
-				//new_info->response = node_reverse != NULL && (ip->ip_p == IPPROTO_TCP || ((struct DV_info_outbound *)node_reverse->info)->shared_info.udp_info.started);
-				info->response = node_reverse != NULL;
-				if (node_reverse != NULL) {
-					leaveNode_shared_sorted_list(DV_l_outbound, node_reverse);
-				}
+		if (!info->stablished) {
+			// Connection is not stablished yet
+			// We recheck if it is a a related outgoing connection
+			node_reverse = NULL;
+			if (DV_isValidList_outbound()) {
+				node_reverse = exclusiveFind_shared_sorted_list(DV_l_outbound, &info_outbound, NULL);
+			}
+			//new_info->response = node_reverse != NULL && (ip->ip_p == IPPROTO_TCP || ((struct DV_info_outbound *)node_reverse->info)->shared_info.udp_info.started);
+			if (node_reverse != NULL)
+			{
+				requestReadNode_shared_sorted_list(node_reverse);
+			}
+			info->response = node_reverse != NULL && ((struct DV_info_outbound *)node_reverse->info)->starting && !syn;
+			info->stablished = node_reverse != NULL;
+			if (node_reverse != NULL) {
+				leaveReadNode_shared_sorted_list(node_reverse);
+				leaveNode_shared_sorted_list(DV_l_outbound, node_reverse);
 			}
 		}
-		// Free new info
-		free(new_info);
 	}
 
 	// One hit more
@@ -466,7 +594,7 @@ void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,
 	struct DV_info_outbound *info, *new_info;
 	struct node_shared_sorted_list *node, *node_reverse;
 	uint16_t src_port, dst_port;
-	int syn, starting;
+	int syn;
 
 	// Protocol wanted??
 	if (ip->ip_p == IPPROTO_ICMP) {
@@ -533,24 +661,13 @@ void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,
 		// All TCP outgoing connections with src port >= 1024 and
 		// dst port < 1024 are considered as client (starting)
 		// connections
-		starting = src_port >= 1024 && dst_port < 1024;
-		starting = src_port >= 1024 && dst_port < 1024;
+		new_info->starting = src_port >= 1024 && dst_port < 1024;
 		// It is also a starting connection if TCP and SYN flag is active
-		starting = starting || (ip->ip_p == IPPROTO_TCP &&syn);
+		new_info->starting = new_info->starting || (ip->ip_p == IPPROTO_TCP && syn);
 
-		if (!starting) {
-			if (ip->ip_p == IPPROTO_TCP) {
-				// Can't be a starting connections. Discard TCP connection
-				free(new_info);
-				return;
-			}
-			else {
-				// UDP connection.
-				if (src_port < 1024) {
-					// Can't be a starting connections. Discard UDP connection
-					free(new_info);
-					return;
-				}
+		if (!new_info->starting) {
+			if (ip->ip_p == IPPROTO_UDP && src_port >= 1024) {
+				// UDP connection and candidate to be a client connection
 				// This is a starting connection (by us) if there is not a relative
 				// incoming connections (we are not responding to a previous incoming connection)
 				// If we have recently changed to a new view then we wait a while for
@@ -562,14 +679,11 @@ void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,
 				}
 				// Checking if there is a relative incoming connection. 
 				// If there is not one then we mark the packet as starting connection
-				// (shared_info.udp_info.started to 1)
-				// If there is one we mark the packet as NOT starting connection but
-				// we ALSO ADD it to the list for optimization reasons (for not checking again)
 				node_reverse = NULL;
 				if (DV_isValidList()) {
 					node_reverse = exclusiveFind_shared_sorted_list(DV_l, new_info, DV_Reverse);
 				}
-				new_info->shared_info.udp_info.started = node_reverse == NULL;
+				new_info->starting = node_reverse == NULL;
 				if (node_reverse != NULL) {
 					leaveNode_shared_sorted_list(DV_l, node_reverse);
 				}				
@@ -586,6 +700,32 @@ void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,
 		free(new_info);
 		// Request write access
 		requestWriteNode_shared_sorted_list(node);
+
+		if (syn) {
+			// New connection. 
+			info->starting = 1;
+			leaveWriteNode_shared_sorted_list(node);
+			// Checking if there is a relative incoming connection. 
+			// If there is one then we mark the incoming connection as a response and stablished connection
+			node_reverse = NULL;
+			if (DV_isValidList()) {
+				node_reverse = exclusiveFind_shared_sorted_list(DV_l, new_info, DV_Reverse);
+			}
+			if (node_reverse != NULL)
+			{
+				requestWriteNode_shared_sorted_list(node_reverse);
+				clear_all_double_list(((struct DV_info *)node_reverse->info)->last_connections, 1, NULL, NULL);
+				((struct DV_info *)node_reverse->info)->total_bytes = 0;
+				((struct DV_info *)node_reverse->info)->response = 1;
+				((struct DV_info *)node_reverse->info)->stablished = 1;
+			}
+			if (node_reverse != NULL) {
+				leaveWriteNode_shared_sorted_list(node_reverse);	
+				leaveNode_shared_sorted_list(DV_l, node_reverse);
+			}
+			requestWriteNode_shared_sorted_list(node);
+		}
+
 		// Update time to current time
 		info->time = now;
 		// No more write access needed

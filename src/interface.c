@@ -334,7 +334,7 @@ void refreshTop()
         case 0:
             // Default view. 
             // Show header
- 	        sprintf(s, "%-10s %-8s  %-7s %-13s %-15s  %15s:%-5s  %-2s  %-16s  %-s\n", "DATE", "TIME", "# HITS", "TOTAL TRANS.", "BANDWIDTH", "SOURCE IP", "PORT", "CT", "NET NAME", "SERVICE");
+ 	        sprintf(s, "%-10s %-8s  %-7s %-13s %-15s  %15s:%-5s %-5s  %-2s  %-16s  %-s\n", "DATE", "TIME", "# HITS", "TOTAL TRANS.", "BANDWIDTH", "SOURCE IP", "PORT", "FLAGS", "CT", "NET NAME", "SERVICE");
             waddstr(info_panel, s);
            
             // Show horizontal line
@@ -351,7 +351,7 @@ void refreshTop()
         case 1:
             // Source IP grouped view. 
             // Show header
- 	        sprintf(s, "%-10s %-8s  %-7s %-13s %-15s  %15s  %-2s  %-16s    %-s\n", "DATE", "TIME", "# HITS", "TOTAL TRANS.", "BANDWIDTH", "SOURCE IP", "CT", "NET NAME", "[#HITS]SERVICE");
+ 	        sprintf(s, "%-10s %-8s  %-7s %-13s %-15s  %15s %-5s  %-2s  %-16s    %-s\n", "DATE", "TIME", "# HITS", "TOTAL TRANS.", "BANDWIDTH", "SOURCE IP", "FLAGS", "CT", "NET NAME", "[#HITS]SERVICE");
             waddstr(info_panel, s);
            
             // Show horizontal line
@@ -368,7 +368,7 @@ void refreshTop()
         case 2:
             // Outbound view
             // Show header
- 	        sprintf(s, "%-10s %-8s  %-7s %-13s %-15s  %15s  %15s  %-2s  %-16s  %-s\n", "DATE", "TIME", "# HITS", "TOTAL TRANS.", "BANDWIDTH", "SOURCE IP", "DESTINATION IP", "CT", "NET NAME", "SERVICE");
+ 	        sprintf(s, "%-10s %-8s  %-7s %-13s %-15s  %15s  %15s %-5s  %-2s  %-16s  %-s\n", "DATE", "TIME", "# HITS", "TOTAL TRANS.", "BANDWIDTH", "SOURCE IP", "DESTINATION IP", "FLAGS", "CT", "NET NAME", "SERVICE");
             waddstr(info_panel, s);
            
             // Show horizontal line
