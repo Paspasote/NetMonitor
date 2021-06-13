@@ -173,8 +173,14 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 				updateWhoisInfo(node, info->ip_src.s_addr, info->country, info->netname);
 			}
 			// Check if we have to update iptables flag
+			if (now - info->iptable_rule > RULE_TIMEOUT)
+			{
+				// Mark iptable rule as old
+				info->flags[FLAG_IPTABLES_POS] = '?';
+			}
 			if (info->flags[FLAG_IPTABLES_POS] == '?')
 			{
+				info->iptable_rule = now;
 				switch (actionIncoming(c_globvars.internet_dev, info->ip_protocol, info->ip_src.s_addr, info->shared_info.icmp_info.code, 
 									   info->ip_dst.s_addr, info->shared_info.icmp_info.type, 0, !info->stablished, "INPUT"))
 				{
@@ -238,8 +244,14 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 				updateWhoisInfo(node, info->ip_src.s_addr, info->country, info->netname);
 			}
 			// Check if we have to update iptables flag
+			if (now - info->iptable_rule > RULE_TIMEOUT)
+			{
+				// Mark iptable rule as old
+				info->flags[FLAG_IPTABLES_POS] = '?';
+			}
 			if (info->flags[FLAG_IPTABLES_POS] == '?')
 			{
+				info->iptable_rule = now;
 				switch (actionIncoming(c_globvars.internet_dev, info->ip_protocol, info->ip_src.s_addr, info->shared_info.tcp_info.sport, 
 									   info->ip_dst.s_addr, info->shared_info.tcp_info.dport, info->shared_info.tcp_info.flags, 
 									   !info->stablished, "INPUT"))
@@ -312,8 +324,13 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 				updateWhoisInfo(node, info->ip_src.s_addr, info->country, info->netname);
 			}
 			// Check if we have to update iptables flag
-			if (info->flags[FLAG_IPTABLES_POS] == '?')
+			if (now - info->iptable_rule > RULE_TIMEOUT)
 			{
+				// Mark iptable rule as old
+				info->flags[FLAG_IPTABLES_POS] = '?';
+			}
+			{
+				info->iptable_rule = now;
 				switch (actionIncoming(c_globvars.internet_dev, info->ip_protocol, info->ip_src.s_addr, info->shared_info.udp_info.sport, 
 									   info->ip_dst.s_addr, info->shared_info.udp_info.dport, 0, !info->stablished, "INPUT"))
 				{
@@ -508,6 +525,7 @@ void DV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const 
 		strcpy(info->country, "");
 		strcpy(info->netname, "");
 		strcpy(info->flags, "?    ");
+		info->iptable_rule = 0;
 	}
 	else {
 		// Connection already exists. Get its information
