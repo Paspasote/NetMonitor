@@ -11,6 +11,7 @@
 #include <sys/wait.h>
 
 #include <debug.h>
+#include <GlobalVars.h>
 #include <Configuration.h>
 #include <SharedSortedList.h>
 #include <Dictionary.h>
@@ -19,17 +20,11 @@
 #include <DefaultView.h>
 #include <IPGroupedView.h>
 
+// EXTERNAL Global vars
+struct write_global_vars w_globvars;
 
 // Global vars
-extern int visual_mode;
-extern shared_sorted_list DV_l;
-extern shared_sorted_list IPG_l;
-extern sem_t mutex_packages_list;
-extern sem_t mutex_bd_whois;
-extern sem_t mutex_cont_requests;
-extern sem_t mutex_cont_whois_threads;
 dictionary bd_whois = NULL;
-unsigned cont_requests = 0;
 unsigned cont_whois_threads = 0;
 int cont_threads_per_tic = 0;
 time_t last_requests_tic = 0;
@@ -68,7 +63,7 @@ void *whoIs(void *ptr_paramt)
     if (getInfoWhoIs(s_ip_address, key, value))
     {
         // Insert the value in dictionary
-        if (sem_wait(&mutex_bd_whois)) 
+        if (sem_wait(&w_globvars.mutex_bd_whois)) 
         {
             perror("whoIs: sem_wait with mutex_bd_whois");
             exit(1);
@@ -95,7 +90,7 @@ void *whoIs(void *ptr_paramt)
             free(key);
             free(value);
         }
-        if (sem_post(&mutex_bd_whois))
+        if (sem_post(&w_globvars.mutex_bd_whois))
         {
             perror("whoIs: sem_post with mutex_bd_whois");
             exit(1);
@@ -109,15 +104,15 @@ void *whoIs(void *ptr_paramt)
     }
     
     // One thread less
-    if (sem_wait(&mutex_cont_whois_threads)) 
+    if (sem_wait(&w_globvars.mutex_cont_whois_threads)) 
     {
         perror("whoIs: sem_wait with mutex_cont_whois_threads");
         exit(1);
     }
     cont_whois_threads--;
-    if (sem_post(&mutex_cont_whois_threads))
+    if (sem_post(&w_globvars.mutex_cont_whois_threads))
     {
-        perror("whoIs: sem_post with mutex_cont_whois_threads");
+        perror("whoIs: sem_post with w_globvars.mutex_cont_whois_threads");
         exit(1);
     }
    
@@ -154,15 +149,15 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
     if (pid) 
     {
         // One more whois request
-        if (sem_wait(&mutex_cont_requests)) 
+        if (sem_wait(&w_globvars.mutex_cont_requests)) 
         {
-            perror("getInfoWhoIs: sem_wait with mutex_cont_whois_threads");
+            perror("getInfoWhoIs: sem_wait with w_globvars.mutex_cont_whois_threads");
             exit(1);
         }
-        cont_requests++;
-        if (sem_post(&mutex_cont_requests))
+        w_globvars.cont_requests++;
+        if (sem_post(&w_globvars.mutex_cont_requests))
         {
-            perror("getInfoWhoIs: sem_post with mutex_cont_whois_threads");
+            perror("getInfoWhoIs: sem_post with w_globvars.mutex_cont_whois_threads");
             exit(1);
         }
 
@@ -273,7 +268,7 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
  	/***************************  DEBUG ****************************/
 	{
 		char m[255];
-		sprintf(m, "Llamadas a whois: %5d  Nº items en BD: %5d    ", cont_requests, size_dict(bd_whois));
+		sprintf(m, "Llamadas a whois: %5d  Nº items en BD: %5d    ", w_globvars.cont_requests, size_dict(bd_whois));
 		debugMessageXY(5, 45, m, NULL, 1);
 	}
 	/*****************************************************************/
@@ -383,9 +378,9 @@ void updateWhoisInfo(struct node_shared_sorted_list *node, uint32_t address, cha
     now = time(NULL);
 
     // Try to get whois info from dictionary
-    if (sem_wait(&mutex_bd_whois)) 
+    if (sem_wait(&w_globvars.mutex_bd_whois)) 
     {
-        perror("updateWhoisInfo: sem_wait with mutex_bd_whois");
+        perror("updateWhoisInfo: sem_wait with w_globvars.mutex_bd_whois");
         exit(1);
     }
     info_whois = findAdressWhois(address);
@@ -394,9 +389,9 @@ void updateWhoisInfo(struct node_shared_sorted_list *node, uint32_t address, cha
         // We have the info. Store it
         strcpy(local_country, info_whois->country);
         strcpy(local_netname, info_whois->netname);
-        if (sem_post(&mutex_bd_whois))
+        if (sem_post(&w_globvars.mutex_bd_whois))
         {
-            perror("updateWhoisInfo: sem_post with mutex_bd_whois");
+            perror("updateWhoisInfo: sem_post with w_globvars.mutex_bd_whois");
             exit(1);
         }
         leaveReadNode_shared_sorted_list(node);
@@ -408,16 +403,16 @@ void updateWhoisInfo(struct node_shared_sorted_list *node, uint32_t address, cha
     }
     else
     {
-        if (sem_post(&mutex_bd_whois))
+        if (sem_post(&w_globvars.mutex_bd_whois))
         {
-            perror("updateWhoisInfo: sem_post with mutex_bd_whois");
+            perror("updateWhoisInfo: sem_post with w_globvars.mutex_bd_whois");
             exit(1);
         }
         // We don't have the info. Launch a whois in a new thread
         // if don't reach the max threads or the max threads per tic or max requests
-        if (sem_wait(&mutex_cont_whois_threads)) 
+        if (sem_wait(&w_globvars.mutex_cont_whois_threads)) 
         {
-            perror("updateWhoisInfo: sem_wait with mutex_cont_whois_threads");
+            perror("updateWhoisInfo: sem_wait with w_globvars.mutex_cont_whois_threads");
             exit(1);
         }
         // Can we reset cont_threads_per_tic?
@@ -428,42 +423,42 @@ void updateWhoisInfo(struct node_shared_sorted_list *node, uint32_t address, cha
         }
         if (cont_whois_threads >= MAX_WHOIS_THREADS || cont_threads_per_tic >= MAX_WHOIS_THREADS)
         {
-            if (sem_post(&mutex_cont_whois_threads))
+            if (sem_post(&w_globvars.mutex_cont_whois_threads))
             {
-                perror("updateWhoisInfo: sem_post with mutex_cont_whois_threads");
+                perror("updateWhoisInfo: sem_post with w_globvars.mutex_cont_whois_threads");
                 exit(1);
             }
             return;
         }
-        if (sem_wait(&mutex_cont_requests)) 
+        if (sem_wait(&w_globvars.mutex_cont_requests)) 
         {
-            perror("updateWhoisInfo: sem_wait with mutex_cont_requests");
+            perror("updateWhoisInfo: sem_wait with w_globvars.mutex_cont_requests");
             exit(1);
         }
-        if (cont_requests >= MAX_WHOIS_REQUESTS)
+        if (w_globvars.cont_requests >= MAX_WHOIS_REQUESTS)
         {
-            if (sem_post(&mutex_cont_requests))
+            if (sem_post(&w_globvars.mutex_cont_requests))
             {
-                perror("updateWhoisInfo: sem_post with mutex_cont_requests");
+                perror("updateWhoisInfo: sem_post with w_globvars.mutex_cont_requests");
                 exit(1);
             }
-            if (sem_post(&mutex_cont_whois_threads))
+            if (sem_post(&w_globvars.mutex_cont_whois_threads))
             {
-                perror("updateWhoisInfo: sem_post with mutex_cont_whois_threads");
+                perror("updateWhoisInfo: sem_post with w_globvars.mutex_cont_whois_threads");
                 exit(1);
             }
             return;
         }
-        if (sem_post(&mutex_cont_requests))
+        if (sem_post(&w_globvars.mutex_cont_requests))
         {
-            perror("updateWhoisInfo: sem_post with mutex_cont_requests");
+            perror("updateWhoisInfo: sem_post with w_globvars.mutex_cont_requests");
             exit(1);
         }
         cont_whois_threads++;
         cont_threads_per_tic++;
-        if (sem_post(&mutex_cont_whois_threads))
+        if (sem_post(&w_globvars.mutex_cont_whois_threads))
         {
-            perror("updateWhoisInfo: sem_post with mutex_cont_whois_threads");
+            perror("updateWhoisInfo: sem_post with w_globvars.mutex_cont_whois_threads");
             exit(1);
         }
         param_address = (uint32_t *)malloc(sizeof(uint32_t));
@@ -678,7 +673,7 @@ void readCurrentRequests()
 */
         else
         {
-            cont_requests = 0;
+            w_globvars.cont_requests = 0;
         }
         return;
     }
@@ -719,11 +714,11 @@ void readCurrentRequests()
     if (req_year == rt->tm_year+1900 && req_mon == rt->tm_mon+1 && req_day == rt->tm_mday)
     {
         // We already have requests this day
-        cont_requests = requests;
+        w_globvars.cont_requests = requests;
     }
     else
     {
-        cont_requests = 0;
+        w_globvars.cont_requests = 0;
     }
 
     // Close the file
@@ -888,7 +883,7 @@ void writeCurrentRequests()
     }
 
     // Save current date and who requests to file
-    if (fprintf(f, "%04d/%02d/%02d:%0u\n", rt->tm_year+1900, rt->tm_mon+1, rt->tm_mday, cont_requests) <= 0)
+    if (fprintf(f, "%04d/%02d/%02d:%0u\n", rt->tm_year+1900, rt->tm_mon+1, rt->tm_mday, w_globvars.cont_requests) <= 0)
     {
         perror("writeCurrentRequests: Can't write current time and whois requests to file!!");
         exit(EXIT_FAILURE);

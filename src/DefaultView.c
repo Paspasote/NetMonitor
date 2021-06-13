@@ -9,23 +9,20 @@
 #include <pthread.h>
 
 
-#include <debug.h>
 #include <SharedSortedList.h>
+#include <GlobalVars.h>
 #include <Configuration.h>
 #include <WhoIs.h>
 #include <iptables.h>
 #include <interface.h>
 #include <DefaultView.h>
+#include <debug.h>
+
+// EXTERNAL Global vars
+extern struct const_global_vars c_globvars;
+extern struct write_global_vars w_globvars;
 
 // Global vars
-shared_sorted_list DV_l = NULL;
-shared_sorted_list DV_l_outbound = NULL;
-extern sem_t mutex_packages_list;
-extern sem_t mutex_outbound_list;
-extern sem_t mutex_bd_whois;
-extern time_t start;
-extern int result_count_lines;
-char *dev_internet, *dev_intranet;
 
 // Function prototypes
 int DV_isValidList();
@@ -48,13 +45,13 @@ int DV_Compare_outbound(void *val1, void *val2);
 int DV_isValidList() {
 	int ret;
 
-	if (sem_wait(&mutex_packages_list)) 
+	if (sem_wait(&w_globvars.mutex_packages_list)) 
 	{
 		perror("DV_isValidList: sem_wait with mutex_packages_list");
 		exit(1);
 	}
-	ret = DV_l != NULL;
-	if (sem_post(&mutex_packages_list))
+	ret = w_globvars.DV_l != NULL;
+	if (sem_post(&w_globvars.mutex_packages_list))
 	{
 		perror("DV_isValidList: sem_post with mutex_packages_list");
 		exit(1);		
@@ -64,13 +61,13 @@ int DV_isValidList() {
 }
 
 void DV_createList() {
-	if (sem_wait(&mutex_packages_list)) 
+	if (sem_wait(&w_globvars.mutex_packages_list)) 
 	{
 		perror("DV_createList: sem_wait with mutex_packages_list");
 		exit(1);
 	}
-	init_shared_sorted_list(&DV_l, DV_Compare);
-	if (sem_post(&mutex_packages_list))
+	init_shared_sorted_list(&w_globvars.DV_l, DV_Compare);
+	if (sem_post(&w_globvars.mutex_packages_list))
 	{
 		perror("DV_createList: sem_post with mutex_packages_list");
 		exit(1);		
@@ -80,13 +77,13 @@ void DV_createList() {
 int DV_isValidList_outbound() {
 	int ret;
 
-	if (sem_wait(&mutex_outbound_list)) 
+	if (sem_wait(&w_globvars.mutex_outbound_list)) 
 	{
 		perror("DV_isValidList_outbound: sem_wait with mutex_outbound_list");
 		exit(1);
 	}
-	ret = DV_l_outbound != NULL;
-	if (sem_post(&mutex_outbound_list))
+	ret = w_globvars.DV_l_outbound != NULL;
+	if (sem_post(&w_globvars.mutex_outbound_list))
 	{
 		perror("DV_isValidList_outbound: sem_post with mutex_outbound_list");
 		exit(1);		
@@ -96,13 +93,13 @@ int DV_isValidList_outbound() {
 }
 
 void DV_createList_outbound() {
-	if (sem_wait(&mutex_outbound_list)) 
+	if (sem_wait(&w_globvars.mutex_outbound_list)) 
 	{
 		perror("DV_createList_outbound: sem_wait with mutex_outbound_list");
 		exit(1);
 	}
-	init_shared_sorted_list(&DV_l_outbound, DV_Compare_outbound);
-	if (sem_post(&mutex_outbound_list))
+	init_shared_sorted_list(&w_globvars.DV_l_outbound, DV_Compare_outbound);
+	if (sem_post(&w_globvars.mutex_outbound_list))
 	{
 		perror("DV_createList_outbound: sem_post with mutex_outbound_list");
 		exit(1);		
@@ -112,10 +109,10 @@ void DV_createList_outbound() {
 void DV_Reset() {
 	if (DV_isValidList())
 	{
-		clear_all_shared_sorted_list(DV_l, 1, DV_freeLastConnections, NULL);
+		clear_all_shared_sorted_list(w_globvars.DV_l, 1, DV_freeLastConnections, NULL);
 	}
 	if (DV_isValidList_outbound()) {
-		clear_all_shared_sorted_list(DV_l_outbound, 1, NULL, NULL);
+		clear_all_shared_sorted_list(w_globvars.DV_l_outbound, 1, NULL, NULL);
 	}
 }
 
@@ -178,7 +175,7 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 			// Check if we have to update iptables flag
 			if (info->flags[FLAG_IPTABLES_POS] == '?')
 			{
-				switch (actionIncoming(dev_internet, info->ip_protocol, info->ip_src.s_addr, info->shared_info.icmp_info.code, 
+				switch (actionIncoming(c_globvars.internet_dev, info->ip_protocol, info->ip_src.s_addr, info->shared_info.icmp_info.code, 
 									   info->ip_dst.s_addr, info->shared_info.icmp_info.type, 0, !info->stablished, "INPUT"))
 				{
 					case -1:
@@ -243,7 +240,7 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 			// Check if we have to update iptables flag
 			if (info->flags[FLAG_IPTABLES_POS] == '?')
 			{
-				switch (actionIncoming(dev_internet, info->ip_protocol, info->ip_src.s_addr, info->shared_info.tcp_info.sport, 
+				switch (actionIncoming(c_globvars.internet_dev, info->ip_protocol, info->ip_src.s_addr, info->shared_info.tcp_info.sport, 
 									   info->ip_dst.s_addr, info->shared_info.tcp_info.dport, info->shared_info.tcp_info.flags, 
 									   !info->stablished, "INPUT"))
 				{
@@ -317,7 +314,7 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 			// Check if we have to update iptables flag
 			if (info->flags[FLAG_IPTABLES_POS] == '?')
 			{
-				switch (actionIncoming(dev_internet, info->ip_protocol, info->ip_src.s_addr, info->shared_info.udp_info.sport, 
+				switch (actionIncoming(c_globvars.internet_dev, info->ip_protocol, info->ip_src.s_addr, info->shared_info.udp_info.sport, 
 									   info->ip_dst.s_addr, info->shared_info.udp_info.dport, 0, !info->stablished, "INPUT"))
 				{
 					case -1:
@@ -379,7 +376,7 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 
 	writeLineOnResult(line, COLOR_PAIR(info->priority), now - info->time <= RECENT_TIMEOUT);
 	leaveReadNode_shared_sorted_list(node);
-	result_count_lines++;
+	w_globvars.result_count_lines++;
 }
 
 void DV_ShowInfo() {
@@ -390,12 +387,12 @@ void DV_ShowInfo() {
 	}
 
 	// Iterate the list and show info on screen
-	result_count_lines = 0;
-	for_eachNode_shared_sorted_list(DV_l, DV_ShowElement, NULL);
+	w_globvars.result_count_lines = 0;
+	for_eachNode_shared_sorted_list(w_globvars.DV_l, DV_ShowElement, NULL);
 }
 
-void DV_addPacket(in_addr_t own_ip_internet, const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
-	const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header, unsigned n_bytes, unsigned priority) {
+void DV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
+				  const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header, unsigned n_bytes, unsigned priority) {
 	time_t now;
 	struct DV_info *info, *new_info;
 	struct DV_info_outbound info_outbound;
@@ -409,7 +406,7 @@ void DV_addPacket(in_addr_t own_ip_internet, const struct ether_header *ethernet
 	}
 
 	// Inbound or Outbound??
-	if (ip->ip_src.s_addr == own_ip_internet) {
+	if (ip->ip_src.s_addr == c_globvars.own_ip_internet) {
 		// Outbound
 		DV_addPacket_outbound(ip, tcp_header, udp_header);
 		return;
@@ -472,7 +469,7 @@ void DV_addPacket(in_addr_t own_ip_internet, const struct ether_header *ethernet
 	}
 
 	// Connection (node list) exist?
-	node = exclusiveFind_shared_sorted_list(DV_l, new_info, DV_Equals);
+	node = exclusiveFind_shared_sorted_list(w_globvars.DV_l, new_info, DV_Equals);
 
 	// New connection?
 	if (node == NULL) {
@@ -488,7 +485,7 @@ void DV_addPacket(in_addr_t own_ip_internet, const struct ether_header *ethernet
 			// and is marked as a starting connection
 			node_reverse = NULL;
 			if (DV_isValidList_outbound()) {
-				node_reverse = exclusiveFind_shared_sorted_list(DV_l_outbound, &info_outbound, NULL);
+				node_reverse = exclusiveFind_shared_sorted_list(w_globvars.DV_l_outbound, &info_outbound, NULL);
 			}			
 			//new_info->response = node_reverse != NULL && (ip->ip_p == IPPROTO_TCP || ((struct DV_info_outbound *)node_reverse->info)->shared_info.udp_info.started);
 			if (node_reverse != NULL)
@@ -499,7 +496,7 @@ void DV_addPacket(in_addr_t own_ip_internet, const struct ether_header *ethernet
 			new_info->stablished = node_reverse != NULL;
 			if (node_reverse != NULL) {
 				leaveReadNode_shared_sorted_list(node_reverse);
-				leaveNode_shared_sorted_list(DV_l_outbound, node_reverse);
+				leaveNode_shared_sorted_list(w_globvars.DV_l_outbound, node_reverse);
 			}
 		}
  		// Initialize stats of new connection
@@ -531,7 +528,7 @@ void DV_addPacket(in_addr_t own_ip_internet, const struct ether_header *ethernet
 			// We recheck if it is a a related outgoing connection
 			node_reverse = NULL;
 			if (DV_isValidList_outbound()) {
-				node_reverse = exclusiveFind_shared_sorted_list(DV_l_outbound, &info_outbound, NULL);
+				node_reverse = exclusiveFind_shared_sorted_list(w_globvars.DV_l_outbound, &info_outbound, NULL);
 			}
 			//new_info->response = node_reverse != NULL && (ip->ip_p == IPPROTO_TCP || ((struct DV_info_outbound *)node_reverse->info)->shared_info.udp_info.started);
 			if (node_reverse != NULL)
@@ -542,7 +539,7 @@ void DV_addPacket(in_addr_t own_ip_internet, const struct ether_header *ethernet
 			info->stablished = node_reverse != NULL;
 			if (node_reverse != NULL) {
 				leaveReadNode_shared_sorted_list(node_reverse);
-				leaveNode_shared_sorted_list(DV_l_outbound, node_reverse);
+				leaveNode_shared_sorted_list(w_globvars.DV_l_outbound, node_reverse);
 			}
 		}
 	}
@@ -575,17 +572,17 @@ void DV_addPacket(in_addr_t own_ip_internet, const struct ether_header *ethernet
 	// Refresh the list of connections
 	if (node == NULL) {
 		// Insert the new connection in the list
-		insert_shared_sorted_list(DV_l, info);
+		insert_shared_sorted_list(w_globvars.DV_l, info);
 	}
 	else {
 		// No more write access needed
 		leaveWriteNode_shared_sorted_list(node);
 
 		// Move existing node to its right position
-		updateNode_shared_sorted_list(DV_l, node);
+		updateNode_shared_sorted_list(w_globvars.DV_l, node);
 
 		// Leaving current node
-		leaveNode_shared_sorted_list(DV_l, node);
+		leaveNode_shared_sorted_list(w_globvars.DV_l, node);
 	}
 }
 
@@ -653,7 +650,7 @@ void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,
 	}
 
 	// Connection (node list) exist?
-	node = exclusiveFind_shared_sorted_list(DV_l_outbound, new_info, NULL);
+	node = exclusiveFind_shared_sorted_list(w_globvars.DV_l_outbound, new_info, NULL);
 
 	// New connection?
 	if (node == NULL) {
@@ -672,7 +669,7 @@ void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,
 				// incoming connections (we are not responding to a previous incoming connection)
 				// If we have recently changed to a new view then we wait a while for
 				// incoming connections until take a decision
-				if (now - start <= THRESHOLD_ESTABLISHED_CONNECTIONS) {
+				if (now - w_globvars.view_started <= THRESHOLD_ESTABLISHED_CONNECTIONS) {
 					// Waiting por posible incoming connections. Discard UDP connection
 					free(new_info);
 					return;
@@ -681,17 +678,17 @@ void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,
 				// If there is not one then we mark the packet as starting connection
 				node_reverse = NULL;
 				if (DV_isValidList()) {
-					node_reverse = exclusiveFind_shared_sorted_list(DV_l, new_info, DV_Reverse);
+					node_reverse = exclusiveFind_shared_sorted_list(w_globvars.DV_l, new_info, DV_Reverse);
 				}
 				new_info->starting = node_reverse == NULL;
 				if (node_reverse != NULL) {
-					leaveNode_shared_sorted_list(DV_l, node_reverse);
+					leaveNode_shared_sorted_list(w_globvars.DV_l, node_reverse);
 				}				
 			}
 		}
 
 		// Insert the new connection in the list
-		insert_shared_sorted_list(DV_l_outbound, new_info);
+		insert_shared_sorted_list(w_globvars.DV_l_outbound, new_info);
 	}
 	else {
 		// Connection already exists. Get its information
@@ -709,7 +706,7 @@ void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,
 			// If there is one then we mark the incoming connection as a response and stablished connection
 			node_reverse = NULL;
 			if (DV_isValidList()) {
-				node_reverse = exclusiveFind_shared_sorted_list(DV_l, new_info, DV_Reverse);
+				node_reverse = exclusiveFind_shared_sorted_list(w_globvars.DV_l, new_info, DV_Reverse);
 			}
 			if (node_reverse != NULL)
 			{
@@ -721,7 +718,7 @@ void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,
 			}
 			if (node_reverse != NULL) {
 				leaveWriteNode_shared_sorted_list(node_reverse);	
-				leaveNode_shared_sorted_list(DV_l, node_reverse);
+				leaveNode_shared_sorted_list(w_globvars.DV_l, node_reverse);
 			}
 			requestWriteNode_shared_sorted_list(node);
 		}
@@ -731,7 +728,7 @@ void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,
 		// No more write access needed
 		leaveWriteNode_shared_sorted_list(node);
 		// Leaving current node
-		leaveNode_shared_sorted_list(DV_l_outbound, node);
+		leaveNode_shared_sorted_list(w_globvars.DV_l_outbound, node);
 	}
 }
 
@@ -800,7 +797,7 @@ void DV_Purge() {
 	now = time(NULL);
 
 	// Iterate the list and remove old connections
-	node = firstNode_shared_sorted_list(DV_l);
+	node = firstNode_shared_sorted_list(w_globvars.DV_l);
 	while (node != NULL) {
 		// Get info node
 		info = (struct DV_info *)node->info;
@@ -825,10 +822,10 @@ void DV_Purge() {
 			// have to delete current node
 			current_node = node;
 			// Before remove current node get the next one
-			node = nextNode_shared_sorted_list(DV_l, node, 0);
+			node = nextNode_shared_sorted_list(w_globvars.DV_l, node, 0);
 			// Removing current node
 			DV_freeLastConnections(current_node->info, NULL);
-			removeNode_shared_sorted_list(DV_l, current_node, 1);
+			removeNode_shared_sorted_list(w_globvars.DV_l, current_node, 1);
 		}
 		else {
 			// Update bandwidth
@@ -838,7 +835,7 @@ void DV_Purge() {
 			leaveWriteNode_shared_sorted_list(node);
 
 			// Next node
-			node = nextNode_shared_sorted_list(DV_l, node, 1);
+			node = nextNode_shared_sorted_list(w_globvars.DV_l, node, 1);
 		}
 	}
 
@@ -861,7 +858,7 @@ void DV_Purge_outbound() {
 	now = time(NULL);
 
 	// Iterate the list and remove old connections
-	node = firstNode_shared_sorted_list(DV_l_outbound);
+	node = firstNode_shared_sorted_list(w_globvars.DV_l_outbound);
 	while (node != NULL) {
 		// Get info node
 		info = (struct DV_info_outbound *)node->info;
@@ -884,16 +881,16 @@ void DV_Purge_outbound() {
 			// have to delete current node
 			current_node = node;
 			// Before remove current node get the next one
-			node = nextNode_shared_sorted_list(DV_l_outbound, node, 0);
+			node = nextNode_shared_sorted_list(w_globvars.DV_l_outbound, node, 0);
 			// Removing current node
-			removeNode_shared_sorted_list(DV_l_outbound, current_node, 1);
+			removeNode_shared_sorted_list(w_globvars.DV_l_outbound, current_node, 1);
 		}
 		else {
 			// Leave read access
 			leaveReadNode_shared_sorted_list(node);
 
 			// Next node
-			node = nextNode_shared_sorted_list(DV_l_outbound, node, 1);
+			node = nextNode_shared_sorted_list(w_globvars.DV_l_outbound, node, 1);
 		}
 	}
 }

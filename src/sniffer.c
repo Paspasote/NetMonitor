@@ -16,6 +16,7 @@
 #include <arpa/inet.h>
 
 #include <debug.h>
+#include <GlobalVars.h>
 #include <Configuration.h>
 #include <NetMonitor.h>
 #include <sniffer.h>
@@ -24,30 +25,30 @@
 #include <IPGroupedView.h>
 #include <OutboundView.h>
 
+// EXTERNAL Global vars
+extern struct const_global_vars c_globvars;
+extern struct write_global_vars w_globvars;
+
+// Global vars
+int ll_header_type;
+int last_visual_mode=-2;
 
 // Function prototypes
 pcap_t * change_sniffer_type(int sniffer_type);
 void catch_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet);
 
-// Global vars
-extern int visual_mode;
-int ll_header_type;
-int last_visual_mode=-2;
-struct param_thread *dev_config;
 
 void *sniffer(void *ptr_paramt) {
 	pcap_t *handle=NULL;
 	int ret_loop_val;
 	int last_sniffer_type=0, sniffer_type;
 
-	dev_config = (struct para_thread *)ptr_paramt;
-
 	// Main loop for getting packets
 	do {	
 		// Has visual mode changed?
-		if (last_visual_mode != visual_mode) {
+		if (last_visual_mode != w_globvars.visual_mode) {
 			// Yes. Type of sniffer?
-			switch (visual_mode) {
+			switch (w_globvars.visual_mode) {
 				case 2:
 					sniffer_type = 2;
 					break;
@@ -60,7 +61,7 @@ void *sniffer(void *ptr_paramt) {
 				handle = change_sniffer_type(sniffer_type);
 				last_sniffer_type = sniffer_type;
 			}
-			last_visual_mode = visual_mode;
+			last_visual_mode = w_globvars.visual_mode;
 		}
 		// Set callback function (catch only one packet)
 		if (handle != NULL) {
@@ -95,10 +96,11 @@ pcap_t * change_sniffer_type(int sniffer_type)
 	switch (sniffer_type) {
 		case 1:
 			// Inspect all packets from internet device
-			dev_net = dev_config->internet_dev;
+			dev_net = c_globvars.internet_dev;
+			mask = c_globvars.own_mask_internet;
 
-			inet_ntop(AF_INET, &dev_config->own_ip_internet, s_ownip, INET_ADDRSTRLEN);
-			inet_ntop(AF_INET, &dev_config->own_mask_internet, s_netmask, INET_ADDRSTRLEN);
+			inet_ntop(AF_INET, &c_globvars.own_ip_internet, s_ownip, INET_ADDRSTRLEN);
+			inet_ntop(AF_INET, &c_globvars.own_mask_internet, s_netmask, INET_ADDRSTRLEN);
 
 			// Set filter			
 			strcpy(filter_exp, "");
@@ -108,12 +110,13 @@ pcap_t * change_sniffer_type(int sniffer_type)
 			// Inspect outgoing packets from intranet to internet
 
 			// Is there intranet device?
-			if (dev_config->intranet_dev == NULL) return NULL;
+			if (c_globvars.intranet_dev == NULL) return NULL;
 
-			dev_net = dev_config->intranet_dev;
+			dev_net = c_globvars.intranet_dev;
+			mask = c_globvars.own_ip_intranet;
 
-			inet_ntop(AF_INET, &dev_config->intranet_dev, s_ownip, INET_ADDRSTRLEN);
-			inet_ntop(AF_INET, &dev_config->own_mask_intranet, s_netmask, INET_ADDRSTRLEN);
+			inet_ntop(AF_INET, &c_globvars.intranet_dev, s_ownip, INET_ADDRSTRLEN);
+			inet_ntop(AF_INET, &c_globvars.own_mask_intranet, s_netmask, INET_ADDRSTRLEN);
 
 			// Set filter
 			sprintf(filter_exp, "src net %s mask %s and not dst net %s mask %s", s_ownip, s_netmask, s_ownip, s_netmask);
@@ -149,7 +152,7 @@ pcap_t * change_sniffer_type(int sniffer_type)
 	}
 
 	/***************************  DEBUG ****************************/
-	if (visual_mode != -1)
+	if (w_globvars.visual_mode != -1)
 	{
 		char m[255];
 		sprintf(m, "Device: %s   IP: %s   Mask: %s   Filter: %s", dev_net, s_ownip, s_netmask, filter_exp);
@@ -225,7 +228,7 @@ void catch_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *
 
 	// Package wanted?
 	priority = 1;
-	if (visual_mode != -1) {
+	if (w_globvars.visual_mode != -1) {
 		if (ip->ip_p == IPPROTO_TCP || ip->ip_p == IPPROTO_UDP) {
 			if (inbound) {
 				priority = incoming_packetAllowed(ip->ip_p, single_port);
@@ -245,28 +248,28 @@ void catch_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *
 		return;
 	}
 
-	switch (visual_mode) {
+	switch (w_globvars.visual_mode) {
 		case -1:
 			// Debug mode. Prints all info
-			if (last_visual_mode == visual_mode) {
+			if (last_visual_mode == w_globvars.visual_mode) {
 				addPacket(ethernet, ip, icmp_header, tcp_header, udp_header, igmp_header);
 			}
 			break;
 		case 0:
 			// Default view. Store packet using DefaultView Module
-			if (last_visual_mode == visual_mode) {
-				DV_addPacket(own_ip_internet, ethernet, ip, icmp_header, tcp_header, udp_header, igmp_header, total_bytes, priority);
+			if (last_visual_mode == w_globvars.visual_mode) {
+				DV_addPacket(ethernet, ip, icmp_header, tcp_header, udp_header, igmp_header, total_bytes, priority);
 			}
 			break;
 		case 1:
 			// IP Source view. Store packet using IPGroupedView Module
-			if (last_visual_mode == visual_mode) {
-				IPG_addPacket(own_ip_internet, ethernet, ip, icmp_header, tcp_header, udp_header, igmp_header, total_bytes, priority);
+			if (last_visual_mode == w_globvars.visual_mode) {
+				IPG_addPacket(ethernet, ip, icmp_header, tcp_header, udp_header, igmp_header, total_bytes, priority);
 			}
 			break;
 		case 2:
 			// Outbound view. Store packet using OutboundView Module
-			if (last_visual_mode == visual_mode) {
+			if (last_visual_mode == w_globvars.visual_mode) {
 				OV_addPacket(ethernet, ip, icmp_header, tcp_header, udp_header, igmp_header, total_bytes, priority);
 			}
 			break;

@@ -2,11 +2,15 @@
 #include <stdlib.h>
 #include <semaphore.h>
 #include <arpa/inet.h>
+
+#include <GlobalVars.h>
 #include <PacketList.h>
 
+// EXTERNAL Global vars
+extern struct const_global_vars c_globvars;
+extern struct write_global_vars w_globvars;
+
 // Global vars
-list buffer_packets = NULL;
-extern sem_t mutex_packages_list;
 
 // Function prototypes
 void init(list *l);
@@ -27,14 +31,14 @@ void addPacket(const struct ether_header *ethernet,const struct ip *ip,const str
 	int i;
 
 	// Check if buffer list has been created
-	if (buffer_packets == NULL) {
-		if (sem_wait(&mutex_packages_list)) 
+	if (w_globvars.buffer_packets == NULL) {
+		if (sem_wait(&w_globvars.mutex_packages_list)) 
 		{
 			perror("addPacket (PacketList): sem_wait with mutex_packages_list");
 			exit(1);
 		}
-		init(&buffer_packets);
-		if (sem_post(&mutex_packages_list))
+		init(&w_globvars.buffer_packets);
+		if (sem_post(&w_globvars.mutex_packages_list))
 		{
 			perror("addPacket (PacketList): sem_post with mutex_packages_list");
 			exit(1);		
@@ -42,7 +46,7 @@ void addPacket(const struct ether_header *ethernet,const struct ip *ip,const str
 	}
 
 	// List is valid?
-	if (buffer_packets == NULL) 
+	if (w_globvars.buffer_packets == NULL) 
 	{
 		fprintf(stderr,"addPacket (PacketList): List is not valid!!\n");
 		exit(1);
@@ -94,13 +98,13 @@ void addPacket(const struct ether_header *ethernet,const struct ip *ip,const str
 	}
 
 	// Store the current packet in packet buffer
-	if (sem_wait(&mutex_packages_list)) 
+	if (sem_wait(&w_globvars.mutex_packages_list)) 
 	{
 		perror("addPacket (PacketList): sem_wait with mutex_packages_list");
 		exit(1);
 	}
-	insert_tail(buffer_packets, info);
-	if (sem_post(&mutex_packages_list))
+	insert_tail(w_globvars.buffer_packets, info);
+	if (sem_post(&w_globvars.mutex_packages_list))
 	{
 		perror("addPacket (PacketList): sem_post with mutex_packages_list");
 		exit(1);		
@@ -148,34 +152,34 @@ void show_packet(struct info_packet *packet)
 }
 
 void show_info() {
-	if (buffer_packets == NULL) {
+	if (w_globvars.buffer_packets == NULL) {
 		return;
 	}
 
 	// Show one packet and remove it
-	if (sem_wait(&mutex_packages_list)) 
+	if (sem_wait(&w_globvars.mutex_packages_list)) 
 	{
 		perror("show_info (PacketList): sem_wait with mutex_packages_list");
 		exit(1);
 	}
 
-	while (!isEmpty(buffer_packets)) {
-		if (sem_post(&mutex_packages_list))
+	while (!isEmpty(w_globvars.buffer_packets)) {
+		if (sem_post(&w_globvars.mutex_packages_list))
 		{
 			perror("show_info (PacketList): sem_post with mutex_packages_list");
 			exit(1);		
 		}
 
-		show_packet(front(buffer_packets));
-		if (sem_wait(&mutex_packages_list)) 
+		show_packet(front(w_globvars.buffer_packets));
+		if (sem_wait(&w_globvars.mutex_packages_list)) 
 		{
 			perror("show_info (PacketList): sem_wait with mutex_packages_list");
 			exit(1);
 		}
-		remove_front(buffer_packets);
+		remove_front(w_globvars.buffer_packets);
 	}
 
-	if (sem_post(&mutex_packages_list))
+	if (sem_post(&w_globvars.mutex_packages_list))
 	{
 		perror("show_info (PacketList): sem_post with mutex_packages_list");
 		exit(1);		

@@ -9,16 +9,18 @@
 #include <arpa/inet.h>
 
 #include <debug.h>
+#include <GlobalVars.h>
 #include <Configuration.h>
 #include <SharedSortedList.h>
 #include <Configuration.h>
 #include <interface.h>
 #include <OutboundView.h>
 
+// EXTERNAL Global vars
+extern struct const_global_vars c_globvars;
+extern struct write_global_vars w_globvars;
+
 // Global vars
-shared_sorted_list OV_l = NULL;
-extern sem_t mutex_packages_list;
-extern int result_count_lines;
 
 // Function prototypes
 int OV_isValidList();
@@ -37,13 +39,13 @@ int OV_Compare(void *val1, void *val2);
 int OV_isValidList() {
 	int ret;
 
-	if (sem_wait(&mutex_packages_list)) 
+	if (sem_wait(&w_globvars.mutex_packages_list)) 
 	{
 		perror("OV_isValidList: sem_wait with mutex_packages_list");
 		exit(1);
 	}
-	ret = OV_l != NULL;
-	if (sem_post(&mutex_packages_list))
+	ret = w_globvars.OV_l != NULL;
+	if (sem_post(&w_globvars.mutex_packages_list))
 	{
 		perror("OV_isValidList: sem_post with mutex_packages_list");
 		exit(1);		
@@ -53,13 +55,13 @@ int OV_isValidList() {
 }
 
 void OV_createList() {
-	if (sem_wait(&mutex_packages_list)) 
+	if (sem_wait(&w_globvars.mutex_packages_list)) 
 	{
 		perror("OV_createList: sem_wait with mutex_packages_list");
 		exit(1);
 	}
-	init_shared_sorted_list(&OV_l, OV_Compare);
-	if (sem_post(&mutex_packages_list))
+	init_shared_sorted_list(&w_globvars.OV_l, OV_Compare);
+	if (sem_post(&w_globvars.mutex_packages_list))
 	{
 		perror("OV_createList: sem_post with mutex_packages_list");
 		exit(1);		
@@ -73,7 +75,7 @@ void OV_removeNode(struct node_shared_sorted_list *node) {
 	info = (struct OV_info *)node->info;
 
 	// Remove node
-	removeNode_shared_sorted_list(OV_l, node, 1);
+	removeNode_shared_sorted_list(w_globvars.OV_l, node, 1);
 
 	// Free memory
 	// Clear Bandwidth info
@@ -87,7 +89,7 @@ void OV_Reset() {
 	// List is valid?
 	if (OV_isValidList())
 	{
-		clear_all_shared_sorted_list(OV_l, 1, NULL, NULL);
+		clear_all_shared_sorted_list(w_globvars.OV_l, 1, NULL, NULL);
 	}
 
 }
@@ -210,7 +212,7 @@ void OV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 			strcpy(s_protocol, "udp");
 			service_alias = serviceAlias(info->ip_protocol, info->shared_info.udp_info.dport);
 			if (service_alias != NULL && strcmp(service_alias, "")) {
-				sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s  %15s  %2s  %-16s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, info->country, info->netname, s_ip_dst, info->country, info->netname, service_alias);				
+				sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s  %15s  %2s  %-16s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_ip_dst, info->country, info->netname, service_alias);				
 			}
 			else {
 				servinfo = getservbyport(htons(info->shared_info.udp_info.dport), s_protocol);
@@ -226,7 +228,7 @@ void OV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 
 	writeLineOnResult(line, COLOR_PAIR(info->priority), now - info->time <= RECENT_TIMEOUT);
 	leaveReadNode_shared_sorted_list(node);
-	result_count_lines++;
+	w_globvars.result_count_lines++;
 }
 
 void OV_ShowInfo() {  
@@ -245,9 +247,9 @@ void OV_ShowInfo() {
 	}
 
 	// Iterate the list and show info on screen
-	result_count_lines = 0;
-	for_eachNode_shared_sorted_list(OV_l, OV_ShowElement, NULL);
-	//for_each_readonly_shared_sorted_list(OV_l, OV_ShowElement, NULL);
+	w_globvars.result_count_lines = 0;
+	for_eachNode_shared_sorted_list(w_globvars.OV_l, OV_ShowElement, NULL);
+	//for_each_readonly_shared_sorted_list(w_globvars.OV_l, OV_ShowElement, NULL);
  	/***************************  DEBUG ****************************/
 	{
 		char m[255];
@@ -332,7 +334,7 @@ void OV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const 
 	}
 
     // Connection (node list) exist?
-	node = exclusiveFind_shared_sorted_list(OV_l, new_info, OV_Equals);
+	node = exclusiveFind_shared_sorted_list(w_globvars.OV_l, new_info, OV_Equals);
     
     if (node == NULL) {
 		// The connection is new.
@@ -390,22 +392,22 @@ void OV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const 
 	// Refresh the list of connections
 	if (node == NULL) {
 		// Insert the new connection in the list
-		insert_shared_sorted_list(OV_l, info);
+		insert_shared_sorted_list(w_globvars.OV_l, info);
 	}
 	else {
 		// No more write access needed
 		leaveWriteNode_shared_sorted_list(node);
 
 		// Move existing node to its right position
-		updateNode_shared_sorted_list(OV_l, node);
+		updateNode_shared_sorted_list(w_globvars.OV_l, node);
 
 		// Leaving current node
-		leaveNode_shared_sorted_list(OV_l, node);
+		leaveNode_shared_sorted_list(w_globvars.OV_l, node);
 	}
 	/***************************  DEBUG ****************************/
 	{
 		char m[100];
-		sprintf(m, "List size: %-5u", size_shared_sorted_list(OV_l));
+		sprintf(m, "List size: %-5u", size_shared_sorted_list(w_globvars.OV_l));
 		debugMessageXY(1, 0, m, NULL, 1);
 	}
 	/****************************************************************/
@@ -560,7 +562,7 @@ void OV_Purge() {
 
 
 	// Iterate the list and remove old connections
-	node = firstNode_shared_sorted_list(OV_l);
+	node = firstNode_shared_sorted_list(w_globvars.OV_l);
 	while (node != NULL) {
 		info = (struct OV_info *)node->info;
 
@@ -584,10 +586,10 @@ void OV_Purge() {
 			// have to delete current node
 			current_node = node;
 			// Before remove current node get the next one
-			node = nextNode_shared_sorted_list(OV_l, node, 0);
+			node = nextNode_shared_sorted_list(w_globvars.OV_l, node, 0);
 			// Removing current node
 			OV_freeLastConnections(current_node->info, NULL);
-			removeNode_shared_sorted_list(OV_l, current_node, 1);
+			removeNode_shared_sorted_list(w_globvars.OV_l, current_node, 1);
 		}
 		else {			
 			// Update bandwidth
@@ -603,17 +605,17 @@ void OV_Purge() {
 				current_node = node;
 
 				// Next node
-				node = nextNode_shared_sorted_list(OV_l, node, 0);
+				node = nextNode_shared_sorted_list(w_globvars.OV_l, node, 0);
 
 				// Move current node
-				updateNode_shared_sorted_list(OV_l, current_node);
+				updateNode_shared_sorted_list(w_globvars.OV_l, current_node);
 
 				// Leave node
-				leaveNode_shared_sorted_list(OV_l, current_node);
+				leaveNode_shared_sorted_list(w_globvars.OV_l, current_node);
 			}
 			else {
 				// Next node
-				node = nextNode_shared_sorted_list(OV_l, node, 1);
+				node = nextNode_shared_sorted_list(w_globvars.OV_l, node, 1);
 			}
 		}
 	}

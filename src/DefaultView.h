@@ -97,7 +97,7 @@ struct DV_info_outbound {
 
 // Function prototypes
 void DV_Reset();
-void DV_addPacket(in_addr_t own_ip_internet, const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
+void DV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
 				  const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header, unsigned n_bytes, unsigned priority);
 void DV_ShowInfo();
 void DV_Purge();

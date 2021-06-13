@@ -110,7 +110,7 @@ struct count_services {
 // Function prototypes
 void IPG_Init();
 void IPG_Reset();
-void IPG_addPacket(in_addr_t own_ip_internet, const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
+void IPG_addPacket(const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
 				   const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header, unsigned n_bytes, unsigned priority);
 void IPG_ShowInfo();
 void IPG_Purge();

@@ -67,7 +67,7 @@ typedef struct info_list {
 
 // Function prototypes
 void addPacket(const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
-	const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header);
+			   const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header);
 void show_info();
 
 

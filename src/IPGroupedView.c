@@ -8,18 +8,17 @@
 #include <arpa/inet.h>
 
 #include <debug.h>
+#include <GlobalVars.h>
 #include <SharedSortedList.h>
 #include <Configuration.h>
 #include <interface.h>
 #include <IPGroupedView.h>
 
+// EXTERNAL Global vars
+extern struct const_global_vars c_globvars;
+extern struct write_global_vars w_globvars;
+
 // Global vars
-shared_sorted_list IPG_l = NULL;
-shared_sorted_list IPG_l_outbound = NULL;
-extern sem_t mutex_packages_list;
-extern sem_t mutex_outbound_list;
-extern time_t start;
-extern int result_count_lines;
 
 // Function prototypes
 int IPG_isValidList();
@@ -60,13 +59,13 @@ int IPG_Reverse(void *val1, void *val2);
 int IPG_isValidList() {
 	int ret;
 
-	if (sem_wait(&mutex_packages_list)) 
+	if (sem_wait(&w_globvars.mutex_packages_list)) 
 	{
 		perror("IPG_isValidList: sem_wait with mutex_packages_list");
 		exit(1);
 	}
-	ret = IPG_l != NULL;
-	if (sem_post(&mutex_packages_list))
+	ret = w_globvars.IPG_l != NULL;
+	if (sem_post(&w_globvars.mutex_packages_list))
 	{
 		perror("IPG_isValidList: sem_post with mutex_packages_list");
 		exit(1);		
@@ -76,13 +75,13 @@ int IPG_isValidList() {
 }
 
 void IPG_createList() {
-	if (sem_wait(&mutex_packages_list)) 
+	if (sem_wait(&w_globvars.mutex_packages_list)) 
 	{
 		perror("IPG_createList: sem_wait with mutex_packages_list");
 		exit(1);
 	}
-	init_shared_sorted_list(&IPG_l, IPG_Compare);
-	if (sem_post(&mutex_packages_list))
+	init_shared_sorted_list(&w_globvars.IPG_l, IPG_Compare);
+	if (sem_post(&w_globvars.mutex_packages_list))
 	{
 		perror("IPG_createList: sem_post with mutex_packages_list");
 		exit(1);		
@@ -92,13 +91,13 @@ void IPG_createList() {
 int IPG_isValidList_outbound() {
 	int ret;
 
-	if (sem_wait(&mutex_outbound_list)) 
+	if (sem_wait(&w_globvars.mutex_outbound_list)) 
 	{
 		perror("IPG_isValidList_outbound: sem_wait with mutex_outbound_list");
 		exit(1);
 	}
-	ret = IPG_l_outbound != NULL;
-	if (sem_post(&mutex_outbound_list))
+	ret = w_globvars.IPG_l_outbound != NULL;
+	if (sem_post(&w_globvars.mutex_outbound_list))
 	{
 		perror("IPG_isValidList_outbound: sem_post with mutex_outbound_list");
 		exit(1);		
@@ -108,13 +107,13 @@ int IPG_isValidList_outbound() {
 }
 
 void IPG_createList_outbound() {
-	if (sem_wait(&mutex_outbound_list)) 
+	if (sem_wait(&w_globvars.mutex_outbound_list)) 
 	{
 		perror("IPG_createList_outbound: sem_wait with mutex_outbound_list");
 		exit(1);
 	}
-	init_shared_sorted_list(&IPG_l_outbound, IPG_Compare_outbound);
-	if (sem_post(&mutex_outbound_list))
+	init_shared_sorted_list(&w_globvars.IPG_l_outbound, IPG_Compare_outbound);
+	if (sem_post(&w_globvars.mutex_outbound_list))
 	{
 		perror("IPG_createList_outbound: sem_post with mutex_outbound_list");
 		exit(1);		
@@ -161,9 +160,9 @@ void IPG_findService(struct IPG_info_outbound *info,
 	*service_node = NULL;
 
 	// First is to find the connection with source address equal to info destination address
-	// in the incoming list (IPG_l)
+	// in the incoming list (w_globvars.IPG_l)
 	if (IPG_isValidList()) {
-		*node = exclusiveFind_shared_sorted_list(IPG_l, info, IPG_ReverseAddress);
+		*node = exclusiveFind_shared_sorted_list(w_globvars.IPG_l, info, IPG_ReverseAddress);
 	}
 
 	if (*node != NULL) {
@@ -173,7 +172,7 @@ void IPG_findService(struct IPG_info_outbound *info,
 			*service_node = exclusiveFind_shared_sorted_list(reverse_info->l_services, info, IPG_Reverse);
 		}
 		if (*service_node == NULL) {
-			leaveNode_shared_sorted_list(IPG_l, *node);
+			leaveNode_shared_sorted_list(w_globvars.IPG_l, *node);
 			*node = NULL;
 		}
 	}
@@ -182,10 +181,10 @@ void IPG_findService(struct IPG_info_outbound *info,
 void IPG_Reset() {
 	if (IPG_isValidList())
 	{
-		clear_all_shared_sorted_list(IPG_l, 1, IPG_freeConnection, NULL);
+		clear_all_shared_sorted_list(w_globvars.IPG_l, 1, IPG_freeConnection, NULL);
 	}
 	if (IPG_isValidList_outbound()) {
-		clear_all_shared_sorted_list(IPG_l_outbound, 1, NULL, NULL);
+		clear_all_shared_sorted_list(w_globvars.IPG_l_outbound, 1, NULL, NULL);
 	}
 }
 
@@ -243,7 +242,7 @@ void IPG_ShowElement(struct node_shared_sorted_list *node, void *param) {
 	writeLineOnResult("\n", 0, 0);
 	leaveReadNode_shared_sorted_list(node);
 
-	result_count_lines++;
+	w_globvars.result_count_lines++;
 }
 
 void IPG_ShowInfo() {
@@ -253,9 +252,9 @@ void IPG_ShowInfo() {
 	}
 
 	// Iterate the list and show info on screen
-	result_count_lines = 0;
-	for_eachNode_shared_sorted_list(IPG_l, IPG_ShowElement, NULL);
-	//for_each_readonly_shared_sorted_list(IPG_l, IPG_ShowElement, NULL);
+	w_globvars.result_count_lines = 0;
+	for_eachNode_shared_sorted_list(w_globvars.IPG_l, IPG_ShowElement, NULL);
+	//for_each_readonly_shared_sorted_list(w_globvars.IPG_l, IPG_ShowElement, NULL);
 }
 
 void IPG_ShowElementService(void *data, void *cont_services) {
@@ -404,7 +403,7 @@ void IPG_ShowServices(struct IPG_info *info) {
 }
 
 
-void IPG_addPacket(in_addr_t own_ip_internet, const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
+void IPG_addPacket(const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
 				   const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header, unsigned n_bytes, unsigned priority) {
 	time_t now;
 	struct IPG_info *info, *new_info;
@@ -418,7 +417,7 @@ void IPG_addPacket(in_addr_t own_ip_internet, const struct ether_header *etherne
 	}
 
 	// Inbound or Outbound??
-	if (ip->ip_src.s_addr == own_ip_internet) {
+	if (ip->ip_src.s_addr == c_globvars.own_ip_internet) {
 		// Outbound
 		IPG_addPacket_outbound(ip, tcp_header, udp_header);
 		return;
@@ -449,7 +448,7 @@ void IPG_addPacket(in_addr_t own_ip_internet, const struct ether_header *etherne
 	new_info->ip_dst = ip->ip_dst;
 
 	// Source IP (node list) exist?
-	node = exclusiveFind_shared_sorted_list(IPG_l, new_info, IPG_Equals);
+	node = exclusiveFind_shared_sorted_list(w_globvars.IPG_l, new_info, IPG_Equals);
 	
 	// New connection?
 	if (node == NULL) {
@@ -515,7 +514,7 @@ void IPG_addPacket(in_addr_t own_ip_internet, const struct ether_header *etherne
 	if (node == NULL) {
 		if (service_added) {
 			// Insert the new connection in the list
-			insert_shared_sorted_list(IPG_l, info);
+			insert_shared_sorted_list(w_globvars.IPG_l, info);
 		}
 		else {
 			// Clear Bandwidth info
@@ -530,11 +529,11 @@ void IPG_addPacket(in_addr_t own_ip_internet, const struct ether_header *etherne
 
 		if (service_added) {
 			// Move existing node to its right position
-			updateNode_shared_sorted_list(IPG_l, node);
+			updateNode_shared_sorted_list(w_globvars.IPG_l, node);
 		}
 
 		// Leaving current node
-		leaveNode_shared_sorted_list(IPG_l, node);
+		leaveNode_shared_sorted_list(w_globvars.IPG_l, node);
 	}
 }
 
@@ -617,12 +616,12 @@ int IPG_addService(time_t now, struct IPG_info *info, const struct ip *ip, const
 			// It is a respond if there is a relative outgoing connection
 			node_reverse = NULL;
 			if (IPG_isValidList_outbound()) {
-				node_reverse = exclusiveFind_shared_sorted_list(IPG_l_outbound, &info_outbound, NULL);
+				node_reverse = exclusiveFind_shared_sorted_list(w_globvars.IPG_l_outbound, &info_outbound, NULL);
 			}
 			//new_info->response = node_reverse != NULL && (ip->ip_p == IPPROTO_TCP || ((struct IPG_info_outbound *)node_reverse->info)->shared_info.udp_info.started);
 			new_info_service->response = node_reverse != NULL;
 			if (node_reverse != NULL) {
-				leaveNode_shared_sorted_list(IPG_l_outbound, node_reverse);
+				leaveNode_shared_sorted_list(w_globvars.IPG_l_outbound, node_reverse);
 			}
 		}
 		// Initialize stats of new connection
@@ -653,12 +652,12 @@ int IPG_addService(time_t now, struct IPG_info *info, const struct ip *ip, const
 				// Is there NOW a relative outgoing connection ?
 				node_reverse = NULL;
 				if (IPG_isValidList_outbound()) {
-					node_reverse = exclusiveFind_shared_sorted_list(IPG_l_outbound, &info_outbound, NULL);
+					node_reverse = exclusiveFind_shared_sorted_list(w_globvars.IPG_l_outbound, &info_outbound, NULL);
 				}
 				//new_info->response = node_reverse != NULL && (ip->ip_p == IPPROTO_TCP || ((struct IPG_info_outbound *)node_reverse->info)->shared_info.udp_info.started);
 				info_service->response = node_reverse != NULL;
 				if (node_reverse != NULL) {
-					leaveNode_shared_sorted_list(IPG_l_outbound, node_reverse);
+					leaveNode_shared_sorted_list(w_globvars.IPG_l_outbound, node_reverse);
 				}
 			}
 		}
@@ -774,7 +773,7 @@ void IPG_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header
 	}
 
 	// Connection (node list) exist?
-	node = exclusiveFind_shared_sorted_list(IPG_l_outbound, new_info, NULL);
+	node = exclusiveFind_shared_sorted_list(w_globvars.IPG_l_outbound, new_info, NULL);
 
 	// New connection?
 	if (node == NULL) {
@@ -804,7 +803,7 @@ void IPG_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header
 				// incoming connections (we are not responding to a previous incoming connection)
 				// If we have recently changed to a new view then we wait a while for
 				// incoming connections until take a decision
-				if (now - start <= THRESHOLD_ESTABLISHED_CONNECTIONS) {
+				if (now - w_globvars.view_started <= THRESHOLD_ESTABLISHED_CONNECTIONS) {
 					// Waiting por posible incoming connections. Discard UDP connection
 					free(new_info);
 					return;
@@ -819,13 +818,13 @@ void IPG_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header
 				new_info->shared_info.udp_info.started = node_service_reverse == NULL;
 				if (node_service_reverse != NULL) {
 					leaveNode_shared_sorted_list(((struct IPG_info *)node_reverse->info)->l_services, node_service_reverse);
-					leaveNode_shared_sorted_list(IPG_l, node_reverse);
+					leaveNode_shared_sorted_list(w_globvars.IPG_l, node_reverse);
 				}				
 			}
 		}
 
 		// Insert the new connection in the list
-		insert_shared_sorted_list(IPG_l_outbound, new_info);
+		insert_shared_sorted_list(w_globvars.IPG_l_outbound, new_info);
 	}
 	else {
 		// Connection already exists. Get its information
@@ -839,7 +838,7 @@ void IPG_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header
 		// No more write access needed
 		leaveWriteNode_shared_sorted_list(node);
 		// Leaving current node
-		leaveNode_shared_sorted_list(IPG_l_outbound, node);
+		leaveNode_shared_sorted_list(w_globvars.IPG_l_outbound, node);
 	}
 }
 
@@ -969,7 +968,7 @@ void IPG_Purge() {
 	now = time(NULL);
 
 	// Iterate the list and remove old connections
-	node = firstNode_shared_sorted_list(IPG_l);
+	node = firstNode_shared_sorted_list(w_globvars.IPG_l);
 	while (node != NULL) {
 		// Get info node
 		info = (struct IPG_info *)node->info;
@@ -984,10 +983,10 @@ void IPG_Purge() {
 			// have to delete current node
 			current_node = node;
 			// Before remove current node get the next one
-			node = nextNode_shared_sorted_list(IPG_l, node, 0);
+			node = nextNode_shared_sorted_list(w_globvars.IPG_l, node, 0);
 			// Removing current node
 			IPG_freeLastConnections(current_node->info, NULL);
-			removeNode_shared_sorted_list(IPG_l, current_node, 1);
+			removeNode_shared_sorted_list(w_globvars.IPG_l, current_node, 1);
 		}
 		else {
 			// Update bandwidth
@@ -997,7 +996,7 @@ void IPG_Purge() {
 			leaveWriteNode_shared_sorted_list(node);
 
 			// Next node
-			node = nextNode_shared_sorted_list(IPG_l, node, 1);
+			node = nextNode_shared_sorted_list(w_globvars.IPG_l, node, 1);
 		}
 	}
 
@@ -1078,7 +1077,7 @@ void IPG_Purge_outbound() {
 	now = time(NULL);
 
 	// Iterate the list and remove old connections
-	node = firstNode_shared_sorted_list(IPG_l_outbound);
+	node = firstNode_shared_sorted_list(w_globvars.IPG_l_outbound);
 	while (node != NULL) {
 		// Get info node
 		info = (struct IPG_info_outbound *)node->info;
@@ -1101,16 +1100,16 @@ void IPG_Purge_outbound() {
 			// have to delete current node
 			current_node = node;
 			// Before remove current node get the next one
-			node = nextNode_shared_sorted_list(IPG_l_outbound, node, 0);
+			node = nextNode_shared_sorted_list(w_globvars.IPG_l_outbound, node, 0);
 			// Removing current node
-			removeNode_shared_sorted_list(IPG_l_outbound, current_node, 1);
+			removeNode_shared_sorted_list(w_globvars.IPG_l_outbound, current_node, 1);
 		}
 		else {
 			// Leave read access
 			leaveReadNode_shared_sorted_list(node);
 
 			// Next node
-			node = nextNode_shared_sorted_list(IPG_l_outbound, node, 1);
+			node = nextNode_shared_sorted_list(w_globvars.IPG_l_outbound, node, 1);
 		}
 	}
 }

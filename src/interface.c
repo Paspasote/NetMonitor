@@ -8,6 +8,7 @@
 
 #include <debug.h>
 #include <misc.h>
+#include <GlobalVars.h>
 #include <NetMonitor.h>
 #include <PacketList.h>
 #include <DefaultView.h>
@@ -23,6 +24,32 @@
 #define INFO_COLS		200
 #define RESULT_LINES	10000
 #define RESULT_COLS		200
+
+// EXTERNAL global vars
+extern struct const_global_vars c_globvars;
+extern struct write_global_vars w_globvars;
+
+
+// global vars
+int reEntry = 0;
+int no_output = 0;
+
+int result_selected_row = -1;
+int result_start_posY;
+int result_end_posY;
+int result_visible_rows;
+int result_top_row = 0;
+int info_start_posY;
+int info_end_posY;
+int info_visible_rows;
+int info_top_row = 0;
+int debug_start_posY;
+int debug_end_posY;
+int debug_visible_rows = 0;
+int debug_top_row = 0;
+int terminal_rows;
+
+WINDOW *main_screen, *info_panel, *result_panel;
 
 // Function prototypes
 void user_interface();
@@ -42,41 +69,9 @@ void resetInterface();
 void quitInterface();
 void changeView();
 
-// global vars
-extern sem_t mutex_screen;
-extern time_t start;
-extern sem_t mutex_cont_requests;
-extern unsigned cont_requests;
-char *dev_internet, *dev_intranet;
-
-int reEntry = 0;
-int no_output = 0;
-int visual_mode = 0;
-
-int result_selected_row = -1;
-int result_start_posY;
-int result_end_posY;
-int result_visible_rows;
-int result_top_row = 0;
-int result_count_lines;
-int info_start_posY;
-int info_end_posY;
-int info_visible_rows;
-int info_top_row = 0;
-int debug_start_posY;
-int debug_end_posY;
-int debug_visible_rows = 0;
-int debug_top_row = 0;
-int terminal_rows;
-
-WINDOW *main_screen, *info_panel, *result_panel;
 
 void *interface(void *ptr_paramt) {
-
-	dev_internet = ((struct param_thread *)ptr_paramt)->internet_dev;
-	dev_intranet = ((struct param_thread *)ptr_paramt)->intranet_dev;
-
-    if (visual_mode != -1) {
+    if (w_globvars.visual_mode != -1) {
         init_curses();
     }
 
@@ -87,7 +82,7 @@ void *interface(void *ptr_paramt) {
 
 	while (1)
 	{
-        if (visual_mode != -1) {
+        if (w_globvars.visual_mode != -1) {
             /***************************  DEBUG ****************************/
             char m[255];
             sprintf(m, "En el bucle principal del interface......                                ");
@@ -145,7 +140,7 @@ void user_interface()
             break;
 
         case KEY_DOWN:
-            if (result_selected_row < result_count_lines-1)
+            if (result_selected_row < w_globvars.result_count_lines-1)
             {
                 selectionDown();
             }
@@ -158,7 +153,7 @@ void user_interface()
             break;
 
         case KEY_NPAGE:
-            if (result_selected_row < result_count_lines-1) {
+            if (result_selected_row < w_globvars.result_count_lines-1) {
                 selectionPageDown();
             }
             break;
@@ -170,7 +165,7 @@ void user_interface()
             break;
 
         case KEY_END:
-            if (result_selected_row < result_count_lines-1) {
+            if (result_selected_row < w_globvars.result_count_lines-1) {
                 selectionEnd();
             }
             break;
@@ -303,13 +298,13 @@ void refreshTop()
     wmove(result_panel, 0, 0);
 
     // Show info on info panel
-    if (sem_wait(&mutex_cont_requests)) 
+    if (sem_wait(&w_globvars.mutex_cont_requests)) 
     {
         perror("refreshTop: sem_wait with mutex_cont_requests");
         exit(1);
     }
-    req = cont_requests;
-    if (sem_post(&mutex_cont_requests))
+    req = w_globvars.cont_requests;
+    if (sem_post(&w_globvars.mutex_cont_requests))
     {
         perror("refreshTop: sem_post with mutex_cont_requests");
         exit(1);
@@ -318,7 +313,7 @@ void refreshTop()
 	t = localtime(&now);
     if (!no_output)
     {
-	    sprintf(s, "%02d/%02d/%4d %02d:%02d:%02d   # Connections: %-4d   Whois requests this day: %-4u\n", t->tm_mday, t->tm_mon, 1900+t->tm_year, t->tm_hour, t->tm_min, t->tm_sec, result_count_lines, req);
+	    sprintf(s, "%02d/%02d/%4d %02d:%02d:%02d   # Connections: %-4d   Whois requests this day: %-4u\n", t->tm_mday, t->tm_mon, 1900+t->tm_year, t->tm_hour, t->tm_min, t->tm_sec, w_globvars.result_count_lines, req);
     }
     else
     {
@@ -330,7 +325,7 @@ void refreshTop()
     waddstr(info_panel, "V-Change View  Q-Exit\n\n");
 
     // Show info with the view selected by user or with the default view
-    switch (visual_mode) {
+    switch (w_globvars.visual_mode) {
         case 0:
             // Default view. 
             // Show header
@@ -384,8 +379,8 @@ void refreshTop()
     }
  
     // _We never allow that selected row be after total rows
-    if (result_selected_row > result_count_lines-1) {
-        result_selected_row = result_count_lines-1;
+    if (result_selected_row > w_globvars.result_count_lines-1) {
+        result_selected_row = w_globvars.result_count_lines-1;
     }
     // If a row is selected on result panel, highlight it
     if (result_selected_row != -1)
@@ -411,13 +406,13 @@ void refreshTop()
     }
 
     // Refresh physical screen
-    if (sem_wait(&mutex_screen)) 
+    if (sem_wait(&w_globvars.mutex_screen)) 
     {
         perror("refreshTop: sem_wait with mutex_screen");
         exit(1);
     }
     doupdate();
-    if (sem_post(&mutex_screen))
+    if (sem_post(&w_globvars.mutex_screen))
     {
         perror("refreshTop: sem_post with mutex_screen");
         exit(1);        
@@ -579,8 +574,8 @@ void selectionDown()
     }
 
     // _We never allow that selected row be after total rows
-    if (result_selected_row > result_count_lines-1) {
-        result_selected_row = result_count_lines-1;
+    if (result_selected_row > w_globvars.result_count_lines-1) {
+        result_selected_row = w_globvars.result_count_lines-1;
     }
 
 
@@ -668,14 +663,14 @@ void selectionPageDown()
         last_visible = result_top_row + result_visible_rows;
 
         // Have to scroll ?
-        if (last_visible < result_count_lines - 1) {
+        if (last_visible < w_globvars.result_count_lines - 1) {
             // We have to scroll
-            result_selected_row = min(result_count_lines-1, result_selected_row + result_visible_rows-1);
+            result_selected_row = min(w_globvars.result_count_lines-1, result_selected_row + result_visible_rows-1);
             result_top_row = result_top_row + result_visible_rows;
         }
         else {
             // Scroll is not needed. We just go to last row 
-            result_selected_row = result_count_lines - 1;
+            result_selected_row = w_globvars.result_count_lines - 1;
         }
     }
 
@@ -791,8 +786,8 @@ void selectionEnd()
         clearSelection();
     }
 
-    result_selected_row = result_count_lines-1;
-    result_top_row =  max(0, result_count_lines - result_visible_rows);
+    result_selected_row = w_globvars.result_count_lines-1;
+    result_top_row =  max(0, w_globvars.result_count_lines - result_visible_rows);
 
     // Apply selection to the line
     setSelection();
@@ -844,13 +839,13 @@ void changeView()
     // Refresh panels
     getPanelDimensions();
 
-    if (sem_wait(&mutex_screen)) 
+    if (sem_wait(&w_globvars.mutex_screen)) 
     {
         perror("changeView: sem_wait with mutex_screen");
         exit(1);
     }
     prefresh(info_panel, 0, 0, 0, 0, min(INFO_LINES-1, LINES-1), min(INFO_COLS-1, COLS-1));
-    if (sem_post(&mutex_screen))
+    if (sem_post(&w_globvars.mutex_screen))
     {
         perror("changeView: sem_post with mutex_screen");
         exit(1);        
@@ -860,12 +855,12 @@ void changeView()
 
     // We do nothing if view has not been changed or key is not valid
     new_visual_mode = key - '1';
-    if (new_visual_mode == visual_mode || key < '1' || key > '3') {
+    if (new_visual_mode == w_globvars.visual_mode || key < '1' || key > '3') {
         return;
     }
 
     // If visual mode needs intranet device and it doesn't set then return
-    if (new_visual_mode == 2 && dev_intranet == NULL) {
+    if (new_visual_mode == 2 && c_globvars.intranet_dev == NULL) {
         // Can't do NAT view. There is not intranet device
         /***************************  DEBUG ***************************/
         {
@@ -878,7 +873,7 @@ void changeView()
     }
 
     // Reset current view
-    switch (visual_mode) {
+    switch (w_globvars.visual_mode) {
         case 0:
             // Default view
             // Can't do NAT view. There is not intranet device
@@ -918,6 +913,6 @@ void changeView()
     }
 
     // Change view
-    start = time(NULL);
-    visual_mode = new_visual_mode;
+    w_globvars.view_started = time(NULL);
+    w_globvars.visual_mode = new_visual_mode;
 }
