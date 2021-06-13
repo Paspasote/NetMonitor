@@ -17,11 +17,12 @@ struct xtc_handle *h_iptables = NULL;
 
 // Prototype functions
 int match_multiport(struct ipt_entry_match *match, u_int16_t sport, u_int16_t dport);
+int match_icmp(struct ipt_entry_match *match, u_int8_t type, u_int8_t code);
 int match_tcp(struct ipt_entry_match *match, u_int16_t sport, u_int16_t dport, u_int8_t flags);
 int match_udp(struct ipt_entry_match *match, u_int16_t sport, u_int16_t dport);
 int match_physdev(struct ipt_entry_match *match, char *net_device);
 int match_conntrack(struct ipt_entry_match *match, int new_connection);
-int match_rule(char *net_device, uint8_t proto, uint32_t s_address, u_int16_t sport, uint32_t d_address, u_int16_t dport, u_int8_t flags, int new_connection, const struct ipt_entry *entry);
+int match_rule(char *net_device, uint8_t proto, uint32_t s_address, u_int16_t sport, uint32_t d_address, u_int16_t dport, u_int8_t flags_type, u_int8_t code, int new_connection, const struct ipt_entry *entry);
 
 void initIPtables()
 {
@@ -80,6 +81,23 @@ int match_multiport(struct ipt_entry_match *match, u_int16_t sport, u_int16_t dp
             }
             return match_sport && match_dport;
     }
+}
+
+int match_icmp(struct ipt_entry_match *match, u_int8_t type, u_int8_t code)
+{
+    struct ipt_icmp *m_icmp;
+    int inverse;
+    int match_icmp;
+
+    m_icmp = (struct ipt_icmp *)match->data;
+
+    inverse = m_icmp->invflags & IPT_ICMP_INV;
+    match_icmp = (m_icmp->type == type && code >= m_icmp->code[0] && code <= m_icmp->code[1]) || m_icmp->type == 0xFF;
+    if (inverse)
+    {
+        match_icmp = !match_icmp;
+    }
+    return match_icmp;
 }
 
 int match_tcp(struct ipt_entry_match *match, u_int16_t sport, u_int16_t dport, u_int8_t flags)
@@ -304,7 +322,7 @@ int match_conntrack(struct ipt_entry_match *match, int new_connection)
 }
 
 int match_rule(char *net_device, uint8_t proto, uint32_t s_address, u_int16_t sport, uint32_t d_address, u_int16_t dport, 
-               u_int8_t flags, int new_connection, const struct ipt_entry *entry)
+               u_int8_t flags_type, u_int8_t code, int new_connection, const struct ipt_entry *entry)
 {
     int inv_interface_in, inv_proto, inv_s_address, inv_d_address;
     int match_interface, match_proto, match_saddress, match_daddress;
@@ -377,9 +395,17 @@ int match_rule(char *net_device, uint8_t proto, uint32_t s_address, u_int16_t sp
             }
             processed_module = 1;
         }
+        if (!strcasecmp(match->u.user.name, "icmp"))
+        {
+            if (!match_icmp(match, flags_type, code))
+            {
+                return 0;
+            }
+            processed_module = 1;
+        }
         if (!strcasecmp(match->u.user.name, "tcp"))
         {
-            if (!match_tcp(match, sport, dport, flags))
+            if (!match_tcp(match, sport, dport, flags_type))
             {
                 return 0;
             }
@@ -409,7 +435,7 @@ int match_rule(char *net_device, uint8_t proto, uint32_t s_address, u_int16_t sp
             }
             processed_module = 1;
         }
-        if (!strcasecmp(match->u.user.name, "log") || !strcasecmp(match->u.user.name, "reject"))
+        if (!strcasecmp(match->u.user.name, "log") || !(strcasecmp(match->u.user.name, "reject")))
         {
             processed_module = 1;
         }
@@ -426,7 +452,7 @@ int match_rule(char *net_device, uint8_t proto, uint32_t s_address, u_int16_t sp
 }
 
 int actionIncoming(char *net_device, uint8_t proto, uint32_t s_address, u_int16_t sport, uint32_t d_address, u_int16_t dport, 
-                   u_int8_t flags, int new_connection, const char *chain_name)
+                   u_int8_t flags_type, u_int8_t code, int new_connection, const char *chain_name)
 {
     struct xtc_handle *p;
     const struct ipt_entry *entry;
@@ -448,14 +474,14 @@ int actionIncoming(char *net_device, uint8_t proto, uint32_t s_address, u_int16_
     entry = iptc_first_rule(chain_name, p);
     while (entry != NULL) {
         // Rule match ?
-        matched = match_rule(net_device, proto, s_address, sport, d_address, dport, flags, new_connection, entry);
+        matched = match_rule(net_device, proto, s_address, sport, d_address, dport, flags_type, code, new_connection, entry);
         if (matched == -1)
         {
             // A not supported rule was found
             inet_ntop(AF_INET, &(s_address), s_ip_src, INET_ADDRSTRLEN);
             inet_ntop(AF_INET, &(d_address), s_ip_dst, INET_ADDRSTRLEN);
-            fprintf(f, "Error al validar conexión: Dev: %s  Proto: %d  SAddr: %s  SPort: %0u  DAddr: %s  DPort: %0u  Flags: %0u  New: %0d\n",
-                    net_device, proto, s_ip_src, sport, s_ip_dst, dport, flags, new_connection);
+            fprintf(f, "Error al validar conexión: Dev: %s  Proto: %d  SAddr: %s  SPort: %0u  DAddr: %s  DPort: %0u  Flags_TCP/ICMP_Type: %0u  ICMP_Code: %0u  New: %0d\n",
+                    net_device, proto, s_ip_src, sport, s_ip_dst, dport, flags_type, code, new_connection);
             fclose(f);
             return -1;
         }
@@ -468,7 +494,7 @@ int actionIncoming(char *net_device, uint8_t proto, uint32_t s_address, u_int16_
             if (iptc_is_chain(target, p))
             {
                 // Yes
-                matched = actionIncoming(net_device, proto, s_address, sport, d_address, dport, flags, new_connection, target);
+                matched = actionIncoming(net_device, proto, s_address, sport, d_address, dport, flags_type, code, new_connection, target);
                 if (matched)
                 {
                     return matched;

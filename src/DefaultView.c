@@ -181,8 +181,8 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 			if (info->flags[FLAG_IPTABLES_POS] == '?')
 			{
 				info->iptable_rule = now;
-				switch (actionIncoming(c_globvars.internet_dev, info->ip_protocol, info->ip_src.s_addr, info->shared_info.icmp_info.code, 
-									   info->ip_dst.s_addr, info->shared_info.icmp_info.type, 0, !info->stablished, "INPUT"))
+				switch (actionIncoming(c_globvars.internet_dev, info->ip_protocol, info->ip_src.s_addr, 0, 
+									   info->ip_dst.s_addr, 0, info->shared_info.icmp_info.type, info->shared_info.icmp_info.code, !info->stablished, "INPUT"))
 				{
 					case -1:
 						info->flags[FLAG_IPTABLES_POS] = ' ';
@@ -253,7 +253,7 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 			{
 				info->iptable_rule = now;
 				switch (actionIncoming(c_globvars.internet_dev, info->ip_protocol, info->ip_src.s_addr, info->shared_info.tcp_info.sport, 
-									   info->ip_dst.s_addr, info->shared_info.tcp_info.dport, info->shared_info.tcp_info.flags, 
+									   info->ip_dst.s_addr, info->shared_info.tcp_info.dport, info->shared_info.tcp_info.flags, 0,
 									   !info->stablished, "INPUT"))
 				{
 					case -1:
@@ -332,7 +332,7 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 			{
 				info->iptable_rule = now;
 				switch (actionIncoming(c_globvars.internet_dev, info->ip_protocol, info->ip_src.s_addr, info->shared_info.udp_info.sport, 
-									   info->ip_dst.s_addr, info->shared_info.udp_info.dport, 0, !info->stablished, "INPUT"))
+									   info->ip_dst.s_addr, info->shared_info.udp_info.dport, 0, 0, !info->stablished, "INPUT"))
 				{
 					case -1:
 						info->flags[FLAG_IPTABLES_POS] = ' ';

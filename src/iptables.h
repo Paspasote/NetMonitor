@@ -8,14 +8,15 @@
 // Function prototypes
 void initIPtables();
 int actionIncoming(char *net_device, uint8_t proto, uint32_t s_address, u_int16_t sport, uint32_t d_address, u_int16_t dport, 
-                   u_int8_t flags, int new_connection, const char *chain_name);
+                   u_int8_t flags_type, u_int8_t code, int new_connection, const char *chain_name);
 // Need: Network incoming device
 //       The IP protocol 
 //       A source IP address in binary format
 //       The source port
 //       A destination IP address in binary format
 //       The destination port
-//       The TCP flags
+//       The TCP flags or ICMP type code
+//       ICMP code
 //       1 if the connection is new or 0 in another case
 //       The initial chain iptables where start the search
 //       Buffer to store the action applied to connection with arguments above
