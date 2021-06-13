@@ -3,6 +3,7 @@
 
 // Constants
 #define BLACKLIST_CHAIN "BlackList"
+#define RULE_TIMEOUT    300
 
 // Function prototypes
 void initIPtables();

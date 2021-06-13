@@ -409,7 +409,7 @@ int match_rule(char *net_device, uint8_t proto, uint32_t s_address, u_int16_t sp
             }
             processed_module = 1;
         }
-        if (!strcasecmp(match->u.user.name, "log"))
+        if (!strcasecmp(match->u.user.name, "log") || !strcasecmp(match->u.user.name, "reject"))
         {
             processed_module = 1;
         }
