@@ -319,6 +319,46 @@ void updateNode_sorted_list(sorted_list l, struct node_sorted_list *node) {
 	l->n_elements++;
 }
 
+struct node_sorted_list * first_sorted_list(sorted_list l)
+{
+	if (l == NULL) 
+	{
+		fprintf(stderr,"first_sorted_list: List is not valid!!\n");
+		exit(1);
+	}
+	return l->header;
+}
+
+struct node_sorted_list * next_sorted_list(struct node_sorted_list *node)
+{
+	if (node == NULL) 
+	{
+		fprintf(stderr,"next_sorted_list: Node is not valid!!\n");
+		exit(1);
+	}
+	return node->next;
+}
+
+struct node_sorted_list * previous_sorted_list(struct node_sorted_list *node)
+{
+	if (node == NULL) 
+	{
+		fprintf(stderr,"previous_sorted_list: Node is not valid!!\n");
+		exit(1);
+	}
+	return node->prev;
+}
+
+struct node_sorted_list * end_sorted_list(sorted_list l)
+{
+	if (l == NULL) 
+	{
+		fprintf(stderr,"end_sorted_list: List is not valid!!\n");
+		exit(1);
+	}
+	return NULL;
+}
+
 void for_each_sorted_list(sorted_list l, void (*f)(void *, void *), void *param) {
 	struct node_sorted_list *p;
 

@@ -71,6 +71,46 @@ void * get_value_dict(dictionary dict, void *key) {
 	}
 }
 
+struct node_sorted_list * first_dict(dictionary dict)
+{
+	if (dict == NULL) 
+	{
+		fprintf(stderr,"first_dict: Dictionary is not valid!!\n");
+		exit(1);
+	}
+	return first_sorted_list(dict->list);
+}
+
+struct node_sorted_list * next_dict(struct node_sorted_list *node)
+{
+	if (node == NULL) 
+	{
+		fprintf(stderr,"next_dict: Pointer is not valid!!\n");
+		exit(1);
+	}
+	return next_sorted_list(node);
+}
+
+struct node_sorted_list * previous_dict(struct node_sorted_list *node)
+{
+	if (node == NULL) 
+	{
+		fprintf(stderr,"previous_dict: Pointer is not valid!!\n");
+		exit(1);
+	}
+	return previous_sorted_list(node);
+}
+
+struct node_sorted_list * end_dict(dictionary dict)
+{
+	if (dict == NULL) 
+	{
+		fprintf(stderr,"end_dict: Dictionary is not valid!!\n");
+		exit(1);
+	}
+	return end_sorted_list(dict->list);
+}
+
 struct node_sorted_list * lower_bound_dict(dictionary dict, void *key) {
 	if (dict == NULL) 
 	{

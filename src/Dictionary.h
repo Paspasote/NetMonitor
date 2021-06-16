@@ -55,6 +55,31 @@ void * get_value_dict(dictionary dict, void *key);
    ERROR: If dict is not initialized
 */
 
+struct node_sorted_list * first_dict(dictionary dict);
+/* NEEDS: A dictionary already initialized
+   RETURN: The first position (node of the list) of dict
+   ERROR: If dict is not initialized
+*/
+
+struct node_sorted_list * next_dict(struct node_sorted_list *node);
+/* NEEDS: A pointer to an element of the dict
+   RETURN: The next element of the dict or NULL if there is none
+   ERROR: If pointer is NULL
+*/
+
+struct node_sorted_list * previous_dict(struct node_sorted_list *node);
+/* NEEDS: A pointer to an element of the dict
+   RETURN: The previous element of the dict or NULL if there is none
+   ERROR: If pointer is NULL
+*/
+
+struct node_sorted_list * end_dict(dictionary dict);
+/* NEEDS: A dictionary already initialized
+   RETURN: The end of the dict (NULL pointer)
+   ERROR: If dict is not initialized
+*/
+
+
 struct node_sorted_list * lower_bound_dict(dictionary dict, void *key);
 /* NEEDS: A dictionary already initialized
           A key value
