@@ -34,7 +34,7 @@ struct DV_info {
 	char country[MAX_LEN_COUNTRY+1];	/* Country code where this packet is coming from */
 	char netname[MAX_VISIBLE_NETNAME+1];	/* Net name this packet is coming from */
 
-	char flags[6];						// Extra source address info
+	char flags[6];						/* Extra source address info */
 	time_t iptable_rule;				/* Last time the iptable rule has been updated */
 
 	int response;						/* 1 if incoming connection is a respond of a previous outcoming 

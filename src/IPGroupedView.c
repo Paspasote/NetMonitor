@@ -8,9 +8,11 @@
 #include <arpa/inet.h>
 
 #include <debug.h>
+#include <misc.h>
 #include <GlobalVars.h>
 #include <SharedSortedList.h>
 #include <Configuration.h>
+#include <iptables.h>
 #include <interface.h>
 #include <IPGroupedView.h>
 
@@ -257,75 +259,158 @@ void IPG_ShowInfo() {
 	//for_each_readonly_shared_sorted_list(w_globvars.IPG_l, IPG_ShowElement, NULL);
 }
 
-void IPG_ShowElementService(void *data, void *cont_services) {
-	struct IPG_service_info *info;
+void IPG_ShowElementService(void *data, void *param) {
+	struct param_showService *param_ss;
+	struct IPG_info *info;
+	struct IPG_service_info *info_service;
 	time_t now;
 	char line[250];
 	char s_protocol[5];
 	struct servent *servinfo;
-	char s_vicmp[][50] = {"Echo Reply","","","Destination Unreachable","Source Quench","Redirect Message","","",
-						  "Echo Request","Router Advertisement","Router Solicitation","Time Exceeded","Bad IP header",
-						  "Timestamp Request","Timestamp Reply","Information Request","Information Reply","Address Mask Request",
-						  "Adress Mask Reply"};
 	char s_icmp[50];
 	char *service_alias;
-	char s_response[4];
 
+	param_ss = (struct param_showService *)param;
+	info = (struct IPG_info *)param_ss->info;
+	info_service = (struct IPG_service_info *)data;
 
-	if (*(unsigned *)cont_services == MAX_SERVICES) {
-		return;
-	}
-	*(unsigned *)cont_services = *(unsigned *)cont_services + 1;
-	
-	info = (struct IPG_service_info *)data;
-
-	if (info->response) {
+	if (info_service->response) {
 		// Do not show response connections
-		strcpy(s_response, "(R)");
 		return;
 	}
-	else {
-		strcpy(s_response, "");
+
+	if (param_ss->cont_services == MAX_SERVICES) {
+		return;
 	}
+	param_ss->cont_services++;
+	
 
 	now = time(NULL);
 
 	// Protocol?
-	switch (info->ip_protocol) {
+	switch (info_service->ip_protocol) {
 		case IPPROTO_ICMP:
-			if (now - info->time >= ANY_VISIBLE_TIMEOUT) {
+			if (now - info_service->time >= ANY_VISIBLE_TIMEOUT) {
 				// Visibility timeout
 				return;
 			}
-			strcpy(s_protocol, "ICMP");
-			if (info->shared_info.icmp_info.type < 19) {
-				strcpy(s_icmp, s_vicmp[info->shared_info.icmp_info.type]);
+
+			// Check if we have to update iptables flag
+			if (now - info_service->iptable_rule > RULE_TIMEOUT)
+			{
+				// Mark iptable rule as old
+				info_service->flags[FLAG_IPTABLES_POS] = '?';
 			}
-			else {
-				strcpy(s_icmp, "");
+			if (info_service->flags[FLAG_IPTABLES_POS] == '?')
+			{
+				info_service->iptable_rule = now;
+				switch (actionIncoming(c_globvars.internet_dev, info_service->ip_protocol, info->ip_src.s_addr, 0, 
+									   info->ip_dst.s_addr, 0, info_service->shared_info.icmp_info.type, info_service->shared_info.icmp_info.code, !info_service->stablished, "INPUT"))
+				{
+					case -1:
+						info_service->flags[FLAG_IPTABLES_POS] = ' ';
+						break;
+					case 1:
+						info_service->flags[FLAG_IPTABLES_POS] = FLAG_ACCEPT;
+						break;
+					case 2:
+						info_service->flags[FLAG_IPTABLES_POS] = FLAG_DROP;
+						break;
+					case 3:
+						info_service->flags[FLAG_IPTABLES_POS] = FLAG_REJECT;
+						break;
+					case 4:
+						info_service->flags[FLAG_IPTABLES_POS] = FLAG_BAN;
+						break;
+				}
 			}
-			if (!strcmp(s_icmp, "")) {
-				sprintf(s_icmp, "%u", info->shared_info.icmp_info.type);
+			// Update Respond/Stablished flag
+			if (info_service->response)
+			{
+				info_service->flags[FLAG_RESPOND_POS] = FLAG_RESPOND;
 			}
-			sprintf(line, "  [%lu]%s/%s", info->hits, s_protocol, s_icmp);
+			else
+			{
+				if (info_service->stablished)
+				{
+					info_service->flags[FLAG_STABLISHED_POS] = FLAG_STABLISHED;
+				}
+				else
+				{
+					info_service->flags[FLAG_NEW_POS] = FLAG_NEW;
+				}
+			}
+
+			// Generate line info
+			strcpy(s_protocol, "icmp");
+			s_icmp_type(info_service->shared_info.icmp_info.type, info_service->shared_info.icmp_info.code, s_icmp);
+			sprintf(line, "  %s [%lu]%s/%s", info_service->flags, info_service->hits, s_protocol, s_icmp);
 			break;
 		case IPPROTO_TCP:
 			if (now - info->time >= TCP_VISIBLE_TIMEOUT) {
 				// Visibility timeout
 				return;
 			}
+
+			// Check if we have to update iptables flag
+			if (now - info_service->iptable_rule > RULE_TIMEOUT)
+			{
+				// Mark iptable rule as old
+				info_service->flags[FLAG_IPTABLES_POS] = '?';
+			}
+			if (info_service->flags[FLAG_IPTABLES_POS] == '?')
+			{
+				info_service->iptable_rule = now;
+				switch (actionIncoming(c_globvars.internet_dev, info_service->ip_protocol, info->ip_src.s_addr, info_service->shared_info.tcp_info.sport, 
+									   info->ip_dst.s_addr, info_service->shared_info.tcp_info.dport, info_service->shared_info.tcp_info.flags, 0, !info_service->stablished, "INPUT"))
+				{
+					case -1:
+						info_service->flags[FLAG_IPTABLES_POS] = ' ';
+						break;
+					case 1:
+						info_service->flags[FLAG_IPTABLES_POS] = FLAG_ACCEPT;
+						break;
+					case 2:
+						info_service->flags[FLAG_IPTABLES_POS] = FLAG_DROP;
+						break;
+					case 3:
+						info_service->flags[FLAG_IPTABLES_POS] = FLAG_REJECT;
+						break;
+					case 4:
+						info_service->flags[FLAG_IPTABLES_POS] = FLAG_BAN;
+						break;
+				}
+			}
+			// Update Respond/Stablished flag
+			if (info_service->response)
+			{
+				info_service->flags[FLAG_RESPOND_POS] = FLAG_RESPOND;
+			}
+			else
+			{
+				if (info_service->stablished)
+				{
+					info_service->flags[FLAG_STABLISHED_POS] = FLAG_STABLISHED;
+				}
+				else
+				{
+					info_service->flags[FLAG_NEW_POS] = FLAG_NEW;
+				}
+			}
+
+			// Generate line info
 			strcpy(s_protocol, "tcp");
-			service_alias = serviceShortAlias(info->ip_protocol, info->shared_info.tcp_info.dport);
+			service_alias = serviceShortAlias(info_service->ip_protocol, info_service->shared_info.tcp_info.dport);
 			if (service_alias != NULL && strcmp(service_alias, "")) {
-				sprintf(line, "  [%lu]%s%s", info->hits, service_alias, s_response);
+				sprintf(line, "  %s [%lu]%s", info_service->flags, info_service->hits, service_alias);
 			}
 			else {
-				servinfo = getservbyport(htons(info->shared_info.tcp_info.dport), s_protocol);
+				servinfo = getservbyport(htons(info_service->shared_info.tcp_info.dport), s_protocol);
 				if (servinfo != NULL && servinfo->s_name != NULL && strcmp(servinfo->s_name, "")) {
-					sprintf(line, "  [%lu]%s%s", info->hits, servinfo->s_name, s_response);
+					sprintf(line, "  %s [%lu]%s", info_service->flags, info_service->hits, servinfo->s_name);
 				}
 				else {
-					sprintf(line, "  [%lu]%s/%u%s", info->hits, s_protocol, info->shared_info.tcp_info.dport, s_response);				
+					sprintf(line, "  %s [%lu]%s/%u", info_service->flags, info_service->hits, s_protocol, info_service->shared_info.tcp_info.dport);
 				}
 			}
 			break;
@@ -334,18 +419,66 @@ void IPG_ShowElementService(void *data, void *cont_services) {
 				// Visibility timeout
 				return;
 			}
+
+			// Check if we have to update iptables flag
+			if (now - info_service->iptable_rule > RULE_TIMEOUT)
+			{
+				// Mark iptable rule as old
+				info_service->flags[FLAG_IPTABLES_POS] = '?';
+			}
+			if (info_service->flags[FLAG_IPTABLES_POS] == '?')
+			{
+				info_service->iptable_rule = now;
+				switch (actionIncoming(c_globvars.internet_dev, info_service->ip_protocol, info->ip_src.s_addr, info_service->shared_info.udp_info.sport, 
+									   info->ip_dst.s_addr, info_service->shared_info.udp_info.dport, 0, 0, !info_service->stablished, "INPUT"))
+				{
+					case -1:
+						info_service->flags[FLAG_IPTABLES_POS] = ' ';
+						break;
+					case 1:
+						info_service->flags[FLAG_IPTABLES_POS] = FLAG_ACCEPT;
+						break;
+					case 2:
+						info_service->flags[FLAG_IPTABLES_POS] = FLAG_DROP;
+						break;
+					case 3:
+						info_service->flags[FLAG_IPTABLES_POS] = FLAG_REJECT;
+						break;
+					case 4:
+						info_service->flags[FLAG_IPTABLES_POS] = FLAG_BAN;
+						break;
+				}
+			}
+			// Update Respond/Stablished flag
+			if (info_service->response)
+			{
+				info_service->flags[FLAG_RESPOND_POS] = FLAG_RESPOND;
+			}
+			else
+			{
+				if (info_service->stablished)
+				{
+					info_service->flags[FLAG_STABLISHED_POS] = FLAG_STABLISHED;
+				}
+				else
+				{
+					info_service->flags[FLAG_NEW_POS] = FLAG_NEW;
+				}
+			}
+
+			// Generate line info
 			strcpy(s_protocol, "udp");
-			service_alias = serviceShortAlias(info->ip_protocol, info->shared_info.udp_info.dport);
+			service_alias = serviceShortAlias(info_service->ip_protocol, info_service->shared_info.udp_info.dport);
 			if (service_alias != NULL && strcmp(service_alias, "")) {
-				sprintf(line, "  [%lu]%s%s", info->hits, service_alias, s_response);
+				sprintf(line, "  %s [%lu]%s", info_service->flags, info_service->hits, service_alias);
 			}
 			else {
-				servinfo = getservbyport(htons(info->shared_info.udp_info.dport), s_protocol);
+				servinfo = getservbyport(htons(info_service->shared_info.udp_info.dport), s_protocol);
 				if (servinfo != NULL && servinfo->s_name != NULL && strcmp(servinfo->s_name, "")) {
-					sprintf(line, "  [%lu]%s%s", info->hits, servinfo->s_name, s_response);
+					sprintf(line, "  %s [%lu]%s", info_service->flags, info_service->hits, servinfo->s_name);
 				}
 				else {
-					sprintf(line, "  [%lu]%s/%u%s", info->hits, s_protocol, info->shared_info.udp_info.dport, s_response);				
+					sprintf(line, "  %s [%lu]%s/%u", info_service->flags, info_service->hits, s_protocol, info_service->shared_info.udp_info.dport);
 				}
 			}
 			break;	
@@ -391,15 +524,16 @@ void IPG_countVisibleServices(void *data, void *param) {
 }
 
 void IPG_ShowServices(struct IPG_info *info) {
-	unsigned cont_services;
+	struct param_showService param;
 
 	if (!IPG_isValidServiceList(info))
 	{
 		return;
 	}
 
-	cont_services = 0;
-	for_each_readonly_shared_sorted_list(info->l_services, IPG_ShowElementService, &cont_services);
+	param.cont_services = 0;
+	param.info = info;
+	for_each_readonly_shared_sorted_list(info->l_services, IPG_ShowElementService, &param);
 }
 
 
@@ -543,7 +677,6 @@ int IPG_addService(time_t now, struct IPG_info *info, const struct ip *ip, const
 	struct IPG_info_outbound info_outbound;
 	struct node_shared_sorted_list *node, *node_reverse;
 	struct IPG_info_bandwidth *info_bandwidth;
-	uint16_t src_port, dst_port;
 	int syn;
 
 	// SYN Flag ?
@@ -588,8 +721,6 @@ int IPG_addService(time_t now, struct IPG_info *info, const struct ip *ip, const
 			new_info_service->shared_info.tcp_info.flags = tcp_header->th_flags;
 			info_outbound.shared_info.tcp_info.sport = new_info_service->shared_info.tcp_info.dport;
 			info_outbound.shared_info.tcp_info.dport = new_info_service->shared_info.tcp_info.sport;
-			src_port = new_info_service->shared_info.tcp_info.sport;
-			dst_port = new_info_service->shared_info.tcp_info.dport;
 			break;
 		case IPPROTO_UDP:
 			// Store source and destination port
@@ -597,20 +728,20 @@ int IPG_addService(time_t now, struct IPG_info *info, const struct ip *ip, const
 			new_info_service->shared_info.udp_info.dport = ntohs(udp_header->uh_dport);
 			info_outbound.shared_info.udp_info.sport = new_info_service->shared_info.udp_info.dport;
 			info_outbound.shared_info.udp_info.dport = new_info_service->shared_info.udp_info.sport;
-			src_port = new_info_service->shared_info.udp_info.sport;
-			dst_port = new_info_service->shared_info.udp_info.dport;
 			break;	
 	}
 
 	// Connection (node list) exist?
 	node = exclusiveFind_shared_sorted_list(info->l_services, new_info_service, IPG_EqualsService);
 
+	// New connection?
 	if (node == NULL) {
 		// The connection is new.
 		// Check if it is a respond of a previous outgoing connection
 		if (ip->ip_p == IPPROTO_ICMP) {
 			// Never can't be a respond
 			new_info_service->response = 0;
+			new_info_service->stablished = 0;
 		}
 		else {
 			// It is a respond if there is a relative outgoing connection
@@ -619,8 +750,15 @@ int IPG_addService(time_t now, struct IPG_info *info, const struct ip *ip, const
 				node_reverse = exclusiveFind_shared_sorted_list(w_globvars.IPG_l_outbound, &info_outbound, NULL);
 			}
 			//new_info->response = node_reverse != NULL && (ip->ip_p == IPPROTO_TCP || ((struct IPG_info_outbound *)node_reverse->info)->shared_info.udp_info.started);
-			new_info_service->response = node_reverse != NULL;
-			if (node_reverse != NULL) {
+			if (node_reverse != NULL)
+			{
+				requestReadNode_shared_sorted_list(node_reverse);
+			}
+			new_info_service->response = node_reverse != NULL && ((struct IPG_info_outbound *)node_reverse->info)->starting && !syn;
+			new_info_service->stablished = node_reverse != NULL;
+			if (node_reverse != NULL) 
+			{
+				leaveReadNode_shared_sorted_list(node_reverse);
 				leaveNode_shared_sorted_list(w_globvars.IPG_l_outbound, node_reverse);
 			}
 		}
@@ -631,10 +769,14 @@ int IPG_addService(time_t now, struct IPG_info *info, const struct ip *ip, const
 		info_service->hits = 0;
 		info_service->first_time = info_service->time;
 		info_service->total_bytes = 0;
+		strcpy(info_service->flags, "?  ");
+		info_service->iptable_rule = 0;
 	}
 	else {
 		// Connection already exists. We get its information
-		info_service = (struct IPG_service_info *) node->info;
+		info_service = (struct IPG_service_info *) node->info;		
+		// Free new info
+		free(new_info_service);
 		// Request write access
 		requestWriteNode_shared_sorted_list(node);
 		// Sync Flag ?
@@ -643,27 +785,31 @@ int IPG_addService(time_t now, struct IPG_info *info, const struct ip *ip, const
 			clear_all_double_list(info_service->last_connections, 1, NULL, NULL);
 			info_service->first_time = info_service->time;
 			info_service->total_bytes = 0;
+			info_service->response = 0;
+			info_service->stablished = 0;
 		}
 		else {
-			if (!info_service->response && ip->ip_p != IPPROTO_ICMP && src_port < 1024 && dst_port >= 1024) {
-				// Not a response connection
-				// We recheck if it is a response connection if
-				// src port < 1024 and dst port >= 1024
+			if (!info_service->stablished) {
+				// Connection is not stablished yet
+				// We recheck if it is a a related outgoing connection
 				// Is there NOW a relative outgoing connection ?
 				node_reverse = NULL;
 				if (IPG_isValidList_outbound()) {
 					node_reverse = exclusiveFind_shared_sorted_list(w_globvars.IPG_l_outbound, &info_outbound, NULL);
 				}
-				//new_info->response = node_reverse != NULL && (ip->ip_p == IPPROTO_TCP || ((struct IPG_info_outbound *)node_reverse->info)->shared_info.udp_info.started);
-				info_service->response = node_reverse != NULL;
-				if (node_reverse != NULL) {
+				if (node_reverse != NULL)
+				{
+					requestReadNode_shared_sorted_list(node_reverse);
+				}
+				info_service->response = node_reverse != NULL && ((struct IPG_info_outbound *)node_reverse->info)->starting && !syn;
+				info_service->stablished = node_reverse != NULL;
+				if (node_reverse != NULL) 
+				{
+					leaveReadNode_shared_sorted_list(node_reverse);
 					leaveNode_shared_sorted_list(w_globvars.IPG_l_outbound, node_reverse);
 				}
 			}
 		}
-		
-		// Free new info
-		free(new_info_service);
 	}
 
 	// One hit more
@@ -714,7 +860,7 @@ void IPG_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header
 	struct IPG_info_outbound *info, *new_info;
 	struct node_shared_sorted_list *node, *node_reverse, *node_service_reverse;
 	uint16_t src_port, dst_port;
-	int syn, starting;
+	int syn;
 
 	// Protocol wanted??
 	if (ip->ip_p == IPPROTO_ICMP) {
@@ -781,24 +927,13 @@ void IPG_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header
 		// All TCP outgoing connections with src port >= 1024 and
 		// dst port < 1024 are considered as client (starting)
 		// connections
-		starting = src_port >= 1024 && dst_port < 1024;
-		starting = src_port >= 1024 && dst_port < 1024;
+		new_info->starting = src_port >= 1024 && dst_port < 1024;
 		// It is also a starting connection if TCP and SYN flag is active
-		starting = starting || (ip->ip_p == IPPROTO_TCP &&syn);
+		new_info->starting = new_info->starting || (ip->ip_p == IPPROTO_TCP && syn);
 
-		if (!starting) {
-			if (ip->ip_p == IPPROTO_TCP) {
-				// Can't be a starting connections. Discard TCP connection
-				free(new_info);
-				return;
-			}
-			else {
-				// UDP connection.
-				if (src_port < 1024) {
-					// Can't be a starting connections. Discard UDP connection
-					free(new_info);
-					return;
-				}
+		if (!new_info->starting) {
+			if (ip->ip_p == IPPROTO_UDP && src_port >= 1024) {
+				// UDP connection and candidate to be a client connection
 				// This is a starting connection (by us) if there is not a relative
 				// incoming connections (we are not responding to a previous incoming connection)
 				// If we have recently changed to a new view then we wait a while for
@@ -810,12 +945,9 @@ void IPG_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header
 				}
 				// Checking if there is a relative incoming connection. 
 				// If there is not one then we mark the packet as starting connection
-				// (shared_info.udp_info.started to 1)
-				// If there is one we mark the packet as NOT starting connection but
-				// we ALSO ADD it to the list for optimization reasons (for not checking again)
 				node_reverse = NULL;
 				IPG_findService(new_info, &node_reverse, &node_service_reverse);
-				new_info->shared_info.udp_info.started = node_service_reverse == NULL;
+				new_info->starting = node_service_reverse == NULL;
 				if (node_service_reverse != NULL) {
 					leaveNode_shared_sorted_list(((struct IPG_info *)node_reverse->info)->l_services, node_service_reverse);
 					leaveNode_shared_sorted_list(w_globvars.IPG_l, node_reverse);
@@ -833,6 +965,31 @@ void IPG_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header
 		free(new_info);
 		// Request write access
 		requestWriteNode_shared_sorted_list(node);
+
+		if (syn) {
+			// New connection. 
+			info->starting = 1;
+			leaveWriteNode_shared_sorted_list(node);
+			// Checking if there is a relative incoming connection. 
+			// If there is one then we mark the incoming connection as a response and stablished connection
+			node_reverse = NULL;
+			IPG_findService(info, &node_reverse, &node_service_reverse);
+			if (node_service_reverse != NULL)
+			{
+				requestWriteNode_shared_sorted_list(node_service_reverse);
+				clear_all_double_list(((struct IPG_service_info *)node_reverse->info)->last_connections, 1, NULL, NULL);
+				((struct IPG_service_info *)node_reverse->info)->total_bytes = 0;
+				((struct IPG_service_info *)node_reverse->info)->response = 1;
+				((struct IPG_service_info *)node_reverse->info)->stablished = 1;
+			}
+			if (node_service_reverse != NULL) {
+				leaveWriteNode_shared_sorted_list(node_service_reverse);	
+				leaveNode_shared_sorted_list(((struct IPG_info *)node_reverse->info)->l_services, node_service_reverse);
+				leaveNode_shared_sorted_list(w_globvars.IPG_l, node_reverse);
+			}
+			requestWriteNode_shared_sorted_list(node);
+		}
+
 		// Update time to current time
 		info->time = now;
 		// No more write access needed

@@ -11,6 +11,7 @@
 
 #include <SharedSortedList.h>
 #include <GlobalVars.h>
+#include <misc.h>
 #include <Configuration.h>
 #include <WhoIs.h>
 #include <iptables.h>
@@ -125,10 +126,6 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 	char s_protocol[5];
 	struct servent *servinfo;
 	char s_ip_src[INET_ADDRSTRLEN], s_ip_dst[INET_ADDRSTRLEN];
-	char s_vicmp[][50] = {"Echo Reply","","","Destination Unreachable","Source Quench","Redirect Message","","",
-						  "Echo Request","Router Advertisement","Router Solicitation","Time Exceeded","Bad IP header",
-						  "Timestamp Request","Timestamp Reply","Information Request","Information Reply","Address Mask Request",
-						  "Adress Mask Reply"};
 	char s_icmp[50];
 	char total_bytes[20];
 	char *service_alias;
@@ -220,15 +217,7 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 
 			// Generate line info
 			strcpy(s_protocol, "icmp");
-			if (info->shared_info.icmp_info.type < 19) {
-				strcpy(s_icmp, s_vicmp[info->shared_info.icmp_info.type]);
-			}
-			else {
-				strcpy(s_icmp, "");
-			}
-			if (!strcmp(s_icmp, "")) {
-				sprintf(s_icmp, " [Unknown] Type: %u", info->shared_info.icmp_info.type);
-			}
+			s_icmp_type(info->shared_info.icmp_info.type, info->shared_info.icmp_info.code, s_icmp);
 			sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s       %-5s  %2s  %-16s  %-5s%s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, info->flags, info->country, info->netname, s_protocol, s_icmp);
 			break;
 		case IPPROTO_TCP:
@@ -289,7 +278,6 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 					info->flags[FLAG_NEW_POS] = FLAG_NEW;
 				}
 			}
-
 
 			// Generate line info
 			strcpy(s_protocol, "tcp");
@@ -608,7 +596,7 @@ void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,
 	time_t now;
 	struct DV_info_outbound *info, *new_info;
 	struct node_shared_sorted_list *node, *node_reverse;
-	uint16_t src_port, dst_port;
+	uint16_t src_port=0, dst_port=0;
 	int syn;
 
 	// Protocol wanted??
@@ -673,7 +661,7 @@ void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,
 	// New connection?
 	if (node == NULL) {
 		// The connection is new. Is it a starting one?
-		// All TCP outgoing connections with src port >= 1024 and
+		// All outgoing connections with src port >= 1024 and
 		// dst port < 1024 are considered as client (starting)
 		// connections
 		new_info->starting = src_port >= 1024 && dst_port < 1024;

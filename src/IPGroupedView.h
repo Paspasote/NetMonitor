@@ -25,8 +25,12 @@ struct IPG_service_info {
 	float bandwidth;					/* Current connection bandwith (of this service) */
 	double_list last_connections;		/* Connections in the last INTERVAL_BANDWITH seconds */
 
+	char flags[4];						/* Extra service info */
+	time_t iptable_rule;				/* Last time the iptable rule has been updated */
+
 	int response;						/* 1 if incoming connection is a respond of a previous outcoming 
 										   0 in another case */
+	int stablished;						/* 1 if incoming connection is stablished one, 0 in another case */
 
    	uint8_t ip_protocol;				/* protocol */
 
@@ -53,6 +57,8 @@ struct IPG_service_info {
 struct IPG_info_outbound {
 	time_t time;						/* Time stamp of last package */
 
+	int starting;						/* 1 if we started comm, 0 if not */
+
    	uint8_t ip_protocol;				/* protocol */
 
 	struct in_addr ip_src;				/* source IP address */
@@ -73,7 +79,6 @@ struct IPG_info_outbound {
 		struct {
         	uint16_t sport;				/* source port */
         	uint16_t dport;				/* destination port */
-			int started;				/* 1 if we started comm, 0 if not */
 		} udp_info;
 
 	} shared_info;
@@ -93,7 +98,7 @@ struct IPG_info {
 	double_list last_connections;		/* Connections in the last INTERVAL_BANDWITH seconds */
 
 	char country[MAX_LEN_COUNTRY+1];	/* Country code where this packet is coming from */
-	char netname[MAX_LEN_NETNAME+1];	/* Net name this packet is coming from */  
+	char netname[MAX_VISIBLE_NETNAME+1];	/* Net name this packet is coming from */  
 
 	struct in_addr ip_src;				/* source IP address */
 	struct in_addr ip_dst;				/* destination IP address */
@@ -105,6 +110,12 @@ struct IPG_info {
 struct count_services {
 	unsigned cont;
 	time_t now;
+};
+
+struct param_showService
+{
+	unsigned cont_services;
+	struct IPG_info *info;
 };
 
 // Function prototypes
