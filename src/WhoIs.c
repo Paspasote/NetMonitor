@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <curses.h>
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -42,6 +43,8 @@ int compareWhoIsKeys(void *data_key1, void *data_key2);
 void readCurrentRequests();
 void writeCurrentRequests();
 void writePair(struct value_dict *info, void *param);
+
+void showPair(struct value_dict *info, int current_register);
 
 void *whoIs(void *ptr_paramt) 
 {
@@ -891,4 +894,83 @@ void writeCurrentRequests()
 
     // Close file
     fclose(f);
+}
+
+void showDatabase(int first_register, int max_registers)
+{
+    struct node_sorted_list *p;
+    int current_register;
+    int cont_registers;
+
+     if (sem_wait(&w_globvars.mutex_bd_whois)) 
+    {
+        perror("showWhoisDatabase: sem_wait with w_globvars.mutex_bd_whois");
+        exit(1);
+    }
+    p = first_dict(bd_whois);
+    current_register = 0;
+    while (p != end_dict(bd_whois) && current_register < first_register)
+    {
+        current_register++;
+        p = next_dict(p);
+    }
+
+    cont_registers = 0;
+    while (p != end_dict(bd_whois) && cont_registers < max_registers)
+    {
+        // Show current register info
+        showPair(p->info, current_register);
+        current_register++;
+        cont_registers++;
+        p = next_dict(p);
+    }
+    if (sem_post(&w_globvars.mutex_bd_whois))
+    {
+        perror("showWhoisDatabase: sem_post with w_globvars.mutex_bd_whois");
+        exit(1);
+    }  
+}
+
+void showPair(struct value_dict *info, int current_register)
+{
+    struct t_key *key;
+    struct t_value *val;
+	struct tm *t;
+	char s_time[20];
+   	char s_initial_address[INET_ADDRSTRLEN], s_final_address[INET_ADDRSTRLEN];
+	char line[WHOIS_COLS+1];
+
+    // Get element (pair)
+    key = (struct t_key *)info->key;
+    val = (struct t_value *)info->value;
+
+    // Get update time
+	t = localtime(&val->updated);
+	sprintf(s_time, "%02d/%02d/%4d", t->tm_mday, t->tm_mon, 1900+t->tm_year);
+
+    // Get initial and final addresss
+	inet_ntop(AF_INET, &(key->initial_address), s_initial_address, INET_ADDRSTRLEN);
+	inet_ntop(AF_INET, &(key->end_address), s_final_address, INET_ADDRSTRLEN);
+
+    // Generate line info
+    sprintf(line, "%05d  %s  %15s:%-15s %-32s  %-2s\n", current_register, s_time, s_initial_address, s_final_address, val->netname, val->country);
+   	writeLineOnWhois(line, COLOR_PAIR(0), 0);
+}
+
+int numberOfWhoisRegisters()
+{
+    int ret;
+
+    if (sem_wait(&w_globvars.mutex_bd_whois)) 
+    {
+        perror("numberOfRegisters: sem_wait with w_globvars.mutex_bd_whois");
+        exit(1);
+    }
+    ret = size_dict(bd_whois);
+    if (sem_post(&w_globvars.mutex_bd_whois))
+    {
+        perror("numberOfRegisters: sem_post with w_globvars.mutex_bd_whois");
+        exit(1);
+    }
+    return ret;
 }

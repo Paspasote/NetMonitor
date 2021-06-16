@@ -3,11 +3,22 @@
 
 #include <curses.h>
 
+#include <WhoIs.h>
 #include <PacketList.h>
+
+// Constants
+
+// Panel sizes
+#define INFO_LINES		5
+#define INFO_COLS		200
+#define RESULT_LINES	10000
+#define RESULT_COLS		200
+#define WHOIS_COLS      MAX_LEN_COUNTRY + MAX_LEN_NETNAME + 56
+
 
 // Function prototypes
 void *interface();
 void writeLineOnResult(char *text, attr_t attr, int bold);
-
+void writeLineOnWhois(char *text, attr_t attr, int bold);
 
 #endif

@@ -17,13 +17,6 @@
 
 #include <interface.h>
 
-// Constants
-
-// Panel sizes
-#define INFO_LINES		5
-#define INFO_COLS		200
-#define RESULT_LINES	10000
-#define RESULT_COLS		200
 
 // EXTERNAL global vars
 extern struct const_global_vars c_globvars;
@@ -43,13 +36,21 @@ int info_start_posY;
 int info_end_posY;
 int info_visible_rows;
 int info_top_row = 0;
+int whois_start_posY;
+int whois_end_posY;
+int whois_start_posX;
+int whois_end_posX;
+int whois_visible_rows;
+int whois_visible_cols;
+int whois_top_row = 0;
+int whois_visible = 0;
 int debug_start_posY;
 int debug_end_posY;
 int debug_visible_rows = 0;
 int debug_top_row = 0;
 int terminal_rows;
 
-WINDOW *main_screen, *info_panel, *result_panel;
+WINDOW *main_screen, *info_panel, *result_panel, *whois_panel, *d_whois_window;
 
 // Function prototypes
 void user_interface();
@@ -68,7 +69,7 @@ void selectionEnd();
 void resetInterface();
 void quitInterface();
 void changeView();
-
+void showWhoisDatabase();
 
 void *interface(void *ptr_paramt) {
     if (w_globvars.visual_mode != -1) {
@@ -139,41 +140,33 @@ void user_interface()
             }
             break;
 
+        case 'w':
+        case 'W':
+            showWhoisDatabase();
+            break;
+
         case KEY_DOWN:
-            if (result_selected_row < w_globvars.result_count_lines-1)
-            {
-                selectionDown();
-            }
+            selectionDown();
             break;
 
         case KEY_UP:
-            if (result_selected_row >= 0) {
-                selectionUp();
-            }
+            selectionUp();
             break;
 
         case KEY_NPAGE:
-            if (result_selected_row < w_globvars.result_count_lines-1) {
-                selectionPageDown();
-            }
+            selectionPageDown();
             break;
 
         case KEY_PPAGE:
-            if (result_selected_row >= 0) {
-                selectionPageUp();
-            }
+            selectionPageUp();
             break;
 
         case KEY_END:
-            if (result_selected_row < w_globvars.result_count_lines-1) {
-                selectionEnd();
-            }
+            selectionEnd();
             break;
 
         case KEY_HOME:
-            if (result_selected_row > 0) {
-                selectionStart();
-            }
+            selectionStart();
             break;
     }
 
@@ -258,7 +251,37 @@ void writeLineOnResult(char *text, attr_t attr, int highlight)
     if (attr) {
     	wattrset(result_panel, 0);
     }
- }
+}
+
+void writeLineOnWhois(char *text, attr_t attr, int highlight) 
+{
+    int x, y;
+
+   // Get current cursor position
+    getyx(whois_panel, y, x);
+
+    // Check if there are free lines
+    if (y >= whois_visible_rows -1) {
+        return;
+    }
+
+    wmove(whois_panel, y, x+1);
+
+    // Write message on panel
+    if (attr) {
+        wattrset(whois_panel, attr);
+    }
+    if (highlight) {
+        wattron(whois_panel, A_BOLD);
+    }
+
+    waddstr(whois_panel, text);
+
+
+    if (attr) {
+    	wattrset(whois_panel, 0);
+    }
+}
 
 void refreshTop()
 {
@@ -346,7 +369,7 @@ void refreshTop()
         case 1:
             // Source IP grouped view. 
             // Show header
- 	        sprintf(s, "%-10s %-8s  %-7s %-13s %-15s  %15s %-5s  %-2s  %-16s    %-s\n", "DATE", "TIME", "# HITS", "TOTAL TRANS.", "BANDWIDTH", "SOURCE IP", "FLAGS", "CT", "NET NAME", "[#HITS]SERVICE");
+ 	        sprintf(s, "%-10s %-8s  %-7s %-13s %-15s  %15s  %-2s  %-16s    %-s\n", "DATE", "TIME", "# HITS", "TOTAL TRANS.", "BANDWIDTH", "SOURCE IP", "CT", "NET NAME", "[#HITS]SERVICE");
             waddstr(info_panel, s);
            
             // Show horizontal line
@@ -404,6 +427,13 @@ void refreshTop()
     {
         pnoutrefresh(info_panel, 0, 0, 0, 0, min(INFO_LINES-1, LINES-1), min(INFO_COLS-1, COLS-1));
     }
+    if (whois_visible_rows > 2 && whois_visible_cols > 2)
+    {
+        //pnoutrefresh(whois_panel, whois_top_row, 0, whois_start_posY, whois_start_posX, whois_end_posY, whois_end_posX);
+        box(d_whois_window, 0, 0);
+        touchwin(whois_panel);
+        pnoutrefresh(d_whois_window, 0, 0, whois_start_posY, whois_start_posX, whois_end_posY, whois_end_posX);
+    }
 
     // Refresh physical screen
     if (sem_wait(&w_globvars.mutex_screen)) 
@@ -459,6 +489,14 @@ void getPanelDimensions()
             remaining_rows = remaining_rows - debug_visible_rows;
         }
         result_visible_rows = remaining_rows;
+        if (whois_visible)
+        {
+            whois_visible_rows = max(0, result_visible_rows - 4);
+        }
+        else
+        {
+            whois_visible_rows = 0;
+        }
     }
     else
     {
@@ -487,6 +525,17 @@ void getPanelDimensions()
     {
         result_start_posY = -1;
     }
+    if (whois_visible_rows > 0)
+    {
+        whois_visible_cols = min(WHOIS_COLS-1, COLS-1);
+        whois_start_posX = (COLS-whois_visible_cols)/2;
+        whois_end_posX = whois_start_posX + whois_visible_cols - 1;
+        whois_start_posY = result_start_posY + 2;
+    }
+    else
+    {
+        whois_start_posY = -1;
+    }
 
     // Calculate the terminal row where every panel ends
     info_end_posY = info_start_posY + info_visible_rows - 1;
@@ -505,6 +554,14 @@ void getPanelDimensions()
     else
     {
         result_end_posY = -1;
+    }
+    if (whois_start_posY >= 0)
+    {
+        whois_end_posY = whois_start_posY + whois_visible_rows - 1;
+    }
+    else
+    {
+        whois_end_posY = -1;
     }
 }
 
@@ -550,6 +607,24 @@ void selectionDown()
 {
     getPanelDimensions();
 
+    // Is Whois window visible?
+    if (whois_visible_rows > 2 && whois_visible_cols > 2)
+    {
+        // Yes. One line down
+        if (whois_top_row + whois_visible_rows-2 < numberOfWhoisRegisters())
+        {
+            whois_top_row++;
+            werase(whois_panel);
+            showDatabase(whois_top_row, whois_visible_rows-2);
+        }
+        return;
+    }
+
+    if (result_selected_row >= w_globvars.result_count_lines-1)
+    {
+        return;
+    }
+
     if (result_visible_rows <= 0)
     {
         return;
@@ -578,7 +653,6 @@ void selectionDown()
         result_selected_row = w_globvars.result_count_lines-1;
     }
 
-
     // Apply selection to the line
     setSelection();
 /* 
@@ -600,6 +674,24 @@ void selectionDown()
 void selectionUp()
 {
     getPanelDimensions();
+
+    // Is Whois window visible?
+    if (whois_visible_rows > 2 && whois_visible_cols > 2)
+    {
+        // Yes. One line up
+        if (whois_top_row > 0)
+        {
+            whois_top_row--;
+            werase(whois_panel);
+            showDatabase(whois_top_row, whois_visible_rows-2);
+        }
+        return;
+    }
+
+    if (result_selected_row < 0) 
+    {
+        return;
+    }
 
     if (result_visible_rows <= 0)
     {
@@ -645,6 +737,24 @@ void selectionPageDown()
     int last_visible;
 
     getPanelDimensions();
+
+    // Is Whois window visible?
+    if (whois_visible_rows > 2 && whois_visible_cols > 2)
+    {
+        // Yes. One page down
+        if (whois_top_row + whois_visible_rows-2 < numberOfWhoisRegisters())
+        {
+            whois_top_row += whois_visible_rows-3;
+            werase(whois_panel);
+            showDatabase(whois_top_row, whois_visible_rows-2);
+        }
+        return;
+    }
+
+    if (result_selected_row >= w_globvars.result_count_lines-1) 
+    {
+        return;
+    }
 
     if (result_visible_rows <= 0)
     {
@@ -696,6 +806,24 @@ void selectionPageUp()
 {
     getPanelDimensions();
 
+    // Is Whois window visible?
+    if (whois_visible_rows > 2 && whois_visible_cols > 2)
+    {
+        // Yes. One page up
+        if (whois_top_row > 0)
+        {
+            whois_top_row = max(0, whois_top_row - (whois_visible_rows-3));
+            werase(whois_panel);
+            showDatabase(whois_top_row, whois_visible_rows-2);
+        }
+        return;
+    }
+
+    if (result_selected_row < 0) 
+    {
+        return;
+    }
+
     if (result_visible_rows <= 0)
     {
         return;
@@ -743,6 +871,24 @@ void selectionStart()
 {
     getPanelDimensions();
 
+    // Is Whois window visible?
+    if (whois_visible_rows > 2 && whois_visible_cols > 2)
+    {
+        // Yes. At the beggining
+        if (whois_top_row > 0)
+        {
+            whois_top_row = 0;
+            werase(whois_panel);
+            showDatabase(whois_top_row, whois_visible_rows-2);
+        }
+        return;
+    }
+
+    if (result_selected_row <= 0) 
+    {
+        return;
+    }
+
     if (result_visible_rows <= 0)
     {
         return;
@@ -775,6 +921,24 @@ void selectionStart()
 void selectionEnd()
 {
     getPanelDimensions();
+
+    // Is Whois window visible?
+    if (whois_visible_rows > 2 && whois_visible_cols > 2)
+    {
+        // Yes. At the end
+        if (whois_top_row + whois_visible_rows-2 < numberOfWhoisRegisters())
+        {
+            whois_top_row = max(0, numberOfWhoisRegisters() - (whois_visible_rows-2));
+            werase(whois_panel);
+            showDatabase(whois_top_row, whois_visible_rows-2);
+        }
+        return;
+    }
+
+    if (result_selected_row >= w_globvars.result_count_lines-1) 
+    {
+        return;
+    }
 
     if (result_visible_rows <= 0)
     {
@@ -915,4 +1079,52 @@ void changeView()
     // Change view
     w_globvars.view_started = time(NULL);
     w_globvars.visual_mode = new_visual_mode;
+}
+
+void showWhoisDatabase()
+{
+    // Show/Hide Whois window
+    whois_visible = !whois_visible;
+
+    // Window visible?
+    if (!whois_visible)
+    {
+        // Destroy the whois panel and its derivated
+        if (whois_panel != NULL)
+        {
+            delwin(whois_panel);
+        }
+        if (d_whois_window != NULL)
+        {
+            delwin(d_whois_window);
+        }
+    }
+
+    // Refresh panels
+    getPanelDimensions();
+
+    // Is Window visible and has more than 2 columns and 2 rows?
+    if (whois_visible_rows > 2 && whois_visible_cols > 2)
+    {
+        // Create whois panel
+        whois_panel = NULL;
+        d_whois_window = NULL;
+        whois_panel = newpad(whois_visible_rows, WHOIS_COLS);
+        if (whois_panel == NULL)
+        {
+            fprintf(stderr, "showWhoisDatabase: Can't create whois window\n");
+            exit(1);                   
+        }
+
+        // Create a subpanel to print a window border (box)
+        d_whois_window = subpad(whois_panel, whois_visible_rows, whois_visible_cols, 0, 0);
+        if (d_whois_window == NULL)
+        {
+            fprintf(stderr, "showWhoisDatabase: Can't create whois window with %0d lines and %0d cols\n", whois_visible_rows, whois_visible_cols);
+            exit(1);                   
+        }
+
+        // Show Whois database info
+        showDatabase(whois_top_row, whois_visible_rows-2);
+    }
 }
