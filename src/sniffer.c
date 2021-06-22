@@ -150,7 +150,7 @@ pcap_t * change_sniffer_type(int sniffer_type)
 		fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
 		exit(1);
 	}
-
+#ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	if (w_globvars.visual_mode != -1)
 	{
@@ -164,6 +164,7 @@ pcap_t * change_sniffer_type(int sniffer_type)
 		}
 	}
 	/*****************************************************************/
+#endif
 
 	return handle;
 }

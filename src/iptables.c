@@ -458,7 +458,9 @@ int actionIncoming(char *net_device, uint8_t proto, uint32_t s_address, u_int16_
     const struct ipt_entry *entry;
     const char *target;
     int matched;
+#ifdef DEBUG
     FILE *f;
+#endif
 	char s_ip_src[INET_ADDRSTRLEN], s_ip_dst[INET_ADDRSTRLEN];
 
     // Initialization
@@ -467,8 +469,9 @@ int actionIncoming(char *net_device, uint8_t proto, uint32_t s_address, u_int16_
         fprintf(stderr, "Can't initialize: %s\n", iptc_strerror(errno));
         exit(EXIT_FAILURE);
     }
-
+#ifdef DEBUG
     f = fopen("iptables.log", "at");
+#endif
 
     // Iterate all rules in chain
     entry = iptc_first_rule(chain_name, p);
@@ -480,9 +483,11 @@ int actionIncoming(char *net_device, uint8_t proto, uint32_t s_address, u_int16_
             // A not supported rule was found
             inet_ntop(AF_INET, &(s_address), s_ip_src, INET_ADDRSTRLEN);
             inet_ntop(AF_INET, &(d_address), s_ip_dst, INET_ADDRSTRLEN);
+#ifdef DEBUG
             fprintf(f, "Error al validar conexión: Dev: %s  Proto: %d  SAddr: %s  SPort: %0u  DAddr: %s  DPort: %0u  Flags_TCP/ICMP_Type: %0u  ICMP_Code: %0u  New: %0d\n",
                     net_device, proto, s_ip_src, sport, s_ip_dst, dport, flags_type, code, new_connection);
             fclose(f);
+#endif
             iptc_free(p);
             return -1;
         }

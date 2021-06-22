@@ -16,7 +16,21 @@ struct const_global_vars
     bpf_u_int32 own_mask_internet;  // Mask address of internet device
     bpf_u_int32 own_ip_intranet;    // IP address of intranet device
     bpf_u_int32 own_mask_intranet;  // Mask address of intranet device
-
+#ifdef DEBUG
+    unsigned cont_is_allow;
+    unsigned cont__is_warning;
+    unsigned cont_is_alert;
+    unsigned cont_is_deny;
+    unsigned cont_os_allow;
+    unsigned cont_os_warning;
+    unsigned cont_os_alert;
+    unsigned cont_os_deny;
+    unsigned cont_oh_allow;
+    unsigned cont_oh_warning;
+    unsigned cont_oh_alert;
+    unsigned cont_oh_deny;
+    unsigned cont_services_alias;
+#endif
 };
 
 struct write_global_vars
@@ -53,6 +67,14 @@ struct write_global_vars
 
     // Number of requests have been done to WhoIs server this day
     unsigned cont_requests;
+#ifdef DEBUG
+    unsigned long allocated_config;
+    unsigned long allocated_whois;
+    unsigned long allocated_packets_inbound;
+    unsigned long allocated_packets_outbound;
+    unsigned long allocated_others;
+    sem_t mutex_am;
+#endif
 };
 
 

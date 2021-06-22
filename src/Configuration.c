@@ -23,10 +23,12 @@ int compareServiceAlias(struct value_dict *info1, struct value_dict *info2);
 int config_PortInRange(struct value_dict *info1, struct value_dict *info2);
 int config_PortInRangeAlias(struct value_dict *info1, struct value_dict *info2);
 
-/********************************* DEBUG *******************
-void printPairPortDic(void *v_pair, void *param);
-***********************************************************/
 
+// EXTERNAL Global vars
+#ifdef DEBUG
+extern struct const_global_vars c_globvars;
+extern struct write_global_vars w_globvars;
+#endif
 
 // Global vars
 dictionary incoming_services_allow;
@@ -61,9 +63,21 @@ void Configuration() {
 
 	processServiceAlias(&services_alias, "services_alias.txt");
 
-	/******************* DEBUG **********************************
-	printConfDict(incoming_services_allow);
-	************************************************************/
+#ifdef DEBUG
+    c_globvars.cont_is_allow = size_dict(incoming_services_allow);
+    c_globvars.cont__is_warning = size_dict(incoming_services_warning);
+    c_globvars.cont_is_alert = size_dict(incoming_services_alert);
+    c_globvars.cont_is_deny = size_dict(incoming_services_deny);
+    c_globvars.cont_os_allow = size_dict(outgoing_services_allow);
+    c_globvars.cont_os_warning = size_dict(outgoing_services_warning);
+    c_globvars.cont_os_alert = size_dict(outgoing_services_alert);
+    c_globvars.cont_os_deny = size_dict(outgoing_services_deny);
+    c_globvars.cont_oh_allow = size_sorted_list(outgoing_hosts_allow);
+    c_globvars.cont_oh_warning = size_sorted_list(outgoing_hosts_warning);
+    c_globvars.cont_oh_alert = size_sorted_list(outgoing_hosts_alert);
+    c_globvars.cont_oh_deny = size_sorted_list(outgoing_hosts_deny);
+    c_globvars.cont_services_alias = size_dict(services_alias);
+#endif
 }
 
 int incoming_packetAllowed(unsigned protocol, unsigned port) {
@@ -210,6 +224,9 @@ void processServiceConfig(dictionary *d, char *filename) {
 	unsigned n_line = 0;
 
 	init_dict(d, compareServicePort, compareService);
+#ifdef DEBUG
+	w_globvars.allocated_config += sizeof(struct info_dict) + sizeof(struct info_sorted_list);
+#endif
 
 	fe = fopen(filename, "rt");
 
@@ -334,18 +351,28 @@ void processServiceLine(dictionary d, char *filename, char *line, unsigned n_lin
 		fprintf(stderr,"processServiceLine: Could not allocate memory for key!!\n");
 		exit(1);		
 	}
+#ifdef DEBUG
+	w_globvars.allocated_config += sizeof(unsigned);
+#endif
+
 	info = (struct ports_range *) malloc(sizeof(struct ports_range));
 	if (info == NULL)
 	{
 		fprintf(stderr,"processServiceLine: Could not allocate memory for value!!\n");
 		exit(1);		
 	}
+#ifdef DEBUG
+	w_globvars.allocated_config += sizeof(struct ports_range);
+#endif
 
 	*key = protocol;
 	info->lower = (unsigned) low_port;
 	info->upper = (unsigned) upper_port;
 
 	insert_dict(d, (void *)key, (void *)info);
+#ifdef DEBUG
+	w_globvars.allocated_config += sizeof(struct value_dict) + sizeof(struct node_sorted_list);
+#endif
 }
 
 void processHostConfig(sorted_list *l, char *filename) {
@@ -354,6 +381,9 @@ void processHostConfig(sorted_list *l, char *filename) {
 	unsigned n_line = 0;
 
 	init_sorted_list(l, compareAddress);
+#ifdef DEBUG
+	w_globvars.allocated_config += sizeof(struct info_sorted_list);
+#endif
 
 	fe = fopen(filename, "rt");
 
@@ -471,6 +501,9 @@ void processHostLine(sorted_list l, char *filename, char *line, unsigned n_line)
 		fprintf(stderr,"processHostLine: Could not allocate memory for value!!\n");
 		exit(1);		
 	}
+#ifdef DEBUG
+	w_globvars.allocated_config += sizeof(struct address_mask);
+#endif
 	inet_pton(AF_INET, s_address, &info->address);
 	if (s_mask != NULL) {
 		info->mask = byte;
@@ -479,6 +512,9 @@ void processHostLine(sorted_list l, char *filename, char *line, unsigned n_line)
 		info->mask = 32;
 	}
 	insert_sorted_list(l, info);
+#ifdef DEBUG
+	w_globvars.allocated_config += sizeof(struct node_sorted_list);
+#endif
 }
 
 void processServiceAlias(dictionary *d, char *filename) {
@@ -487,6 +523,9 @@ void processServiceAlias(dictionary *d, char *filename) {
 	unsigned n_line = 0;
 
 	init_dict(d, compareServiceAlias, compareService);
+#ifdef DEBUG
+	w_globvars.allocated_config += sizeof(struct info_dict) + sizeof(struct info_sorted_list);
+#endif
 
 	fe = fopen(filename, "rt");
 
@@ -649,22 +688,34 @@ void processLineAlias(dictionary d, char *filename, char *line, unsigned n_line)
 		fprintf(stderr,"processLineAlias: Could not allocate memory for key!!\n");
 		exit(1);		
 	}
+#ifdef DEBUG
+	w_globvars.allocated_config += sizeof(unsigned);
+#endif
 	info = (struct info_alias *) malloc(sizeof(struct info_alias));
 	if (info == NULL)
 	{
 		fprintf(stderr,"processLineAlias: Could not allocate memory for port value!!\n");
 		exit(1);		
 	}
+#ifdef DEBUG
+	w_globvars.allocated_config += sizeof(struct info_alias);
+#endif
 	info->alias = (char *) malloc(strlen(alias)+1);
 	if (info->alias == NULL) {
 		fprintf(stderr,"processLineAlias: Could not allocate memory for alias!!\n");
 		exit(1);				
 	}
+#ifdef DEBUG
+	w_globvars.allocated_config += strlen(alias)+1;
+#endif
 	info->short_alias = malloc(strlen(short_alias)+1);
 	if (info->short_alias == NULL) {
 		fprintf(stderr,"processLineAlias: Could not allocate memory for short alias!!\n");
 		exit(1);				
 	}
+#ifdef DEBUG
+	w_globvars.allocated_config += strlen(short_alias)+1;
+#endif
 
 	*key = protocol;
 	info->lower = (unsigned) low_port;
@@ -674,6 +725,9 @@ void processLineAlias(dictionary d, char *filename, char *line, unsigned n_line)
 
 
 	insert_dict(d, (void *)key, (void *)info);
+#ifdef DEBUG
+	w_globvars.allocated_config += sizeof(struct value_dict) + sizeof(struct node_sorted_list);
+#endif
 }
 
 int compareService(void *val1,  void *val2) {
@@ -883,34 +937,3 @@ int config_PortInRangeAlias(struct value_dict *info1, struct value_dict *info2) 
 		}
 	}
 }
-
-/******************************************  DEBUG *******************************
-void printPairPortDic(void *v_pair, void *param) {
-    struct value_dict *pair;
-    unsigned key;
-    struct ports_range *value;
-    char line[100];
-    char s_protocol[8];
-
-    pair = (struct value_dict *)v_pair;
-    key = *(unsigned *)pair->key;
-    value = (struct ports_range *)pair->value;
-
-    // Protocol?
-    switch (key) {
-        case IPPROTO_TCP:
-            strcpy(s_protocol, "tcp");
-            break;
-        case IPPROTO_UDP:
-            strcpy(s_protocol, "udp");
-            break;
-    }
-    sprintf(line, "%s/%u-%u\n" , s_protocol, value->lower, value->upper);
-    debugMessage(line, NULL, 2);
-}
-
-void printConfDict(dictionary d) {
-    for_each_dict(d, printPairPortDic, NULL);
-}
-
-*************************************************************************************/

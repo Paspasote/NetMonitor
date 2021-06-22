@@ -29,7 +29,9 @@ dictionary bd_whois = NULL;
 unsigned cont_whois_threads = 0;
 int cont_threads_per_tic = 0;
 time_t last_requests_tic = 0;
+#ifdef DEBUG
 unsigned cont_fallos1 = 0, cont_fallos2 = 0, cont_fallos3 = 0, cont_repetidos = 0;
+#endif
 
 // Function prototypes
 int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value *value);
@@ -56,13 +58,30 @@ void *whoIs(void *ptr_paramt)
     // Get address 
     ip_address = *((uint32_t *)ptr_paramt);
     free(ptr_paramt);
+#ifdef DEBUG
+    w_globvars.allocated_whois -= sizeof(uint32_t);
+#endif
 
     // Get string address
 	inet_ntop(AF_INET, &ip_address, s_ip_address, INET_ADDRSTRLEN);
 
     // Launch whois
     key = (struct t_key *)malloc(sizeof(struct t_key));
+	if (key == NULL) {
+		fprintf(stderr,"whoIs: Could not allocate memory!!\n");
+		exit(1);				
+	}
+#ifdef DEBUG
+    w_globvars.allocated_whois += sizeof(struct t_key);
+#endif
     value = (struct t_value *)malloc(sizeof(struct t_value));
+	if (value == NULL) {
+		fprintf(stderr,"whoIs: Could not allocate memory!!\n");
+		exit(1);				
+	}
+#ifdef DEBUG
+    w_globvars.allocated_whois += sizeof(struct t_value);
+#endif
     if (getInfoWhoIs(s_ip_address, key, value))
     {
         // Insert the value in dictionary
@@ -78,20 +97,29 @@ void *whoIs(void *ptr_paramt)
             // No. Insert it
             value->updated = time(NULL);
             insert_dict(bd_whois, key, value);
+#ifdef DEBUG
+            w_globvars.allocated_whois += sizeof(struct value_dict) + sizeof(struct node_sorted_list);
+#endif
         }
         else
         {
+#ifdef DEBUG            
             cont_repetidos++;
             /***************************  DEBUG ****************************/
             {
                 char m[255];
                 sprintf(m, "Sin datos: %5d   Sin rango: %5d    Mal dirs: %5d  Repetidos: %5d    ", cont_fallos1, cont_fallos2, cont_fallos3, cont_repetidos);
-                debugMessageXY(6, 45, m, NULL, 1);
+                debugMessageXY(6, 0, m, NULL, 1);
             }
+#endif
             /*****************************************************************/
             // The info is already inserted in dictionary
             free(key);
             free(value);
+#ifdef DEBUG
+            w_globvars.allocated_whois -= sizeof(struct t_key);
+            w_globvars.allocated_whois -= sizeof(struct t_value);
+#endif
         }
         if (sem_post(&w_globvars.mutex_bd_whois))
         {
@@ -104,6 +132,10 @@ void *whoIs(void *ptr_paramt)
         // whois command couldn't get any info
         free(key);
         free(value);
+#ifdef DEBUG
+        w_globvars.allocated_whois -= sizeof(struct t_key);
+        w_globvars.allocated_whois -= sizeof(struct t_value);
+#endif
     }
     
     // One thread less
@@ -267,29 +299,31 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
 
     // Wait until child finish
     waitpid(pid, NULL, 0);
-
+#ifdef DEBUG
  	/***************************  DEBUG ****************************/
 	{
 		char m[255];
-		sprintf(m, "Llamadas a whois: %5d  Nº items en BD: %5d    ", w_globvars.cont_requests, size_dict(bd_whois));
-		debugMessageXY(5, 45, m, NULL, 1);
+		sprintf(m, "Llamadas a whois: %0u  Nº items en BD: %0u          ", w_globvars.cont_requests, size_dict(bd_whois));
+		debugMessageXY(5, 0, m, NULL, 1);
 	}
 	/*****************************************************************/
-
+#endif
     // Close pipe
     close(pipe_fd[0]);
 
     // Did we got any info?
     if (!strcmp(local_country, "") && !strcmp(local_netname, ""))
     {
+#ifdef DEBUG
         cont_fallos1++;
         /***************************  DEBUG ****************************/
         {
             char m[255];
             sprintf(m, "Sin datos: %5d   Sin rango: %5d    Mal dirs: %5d  Repetidos: %5d                        ", cont_fallos1, cont_fallos2, cont_fallos3, cont_repetidos);
-            debugMessageXY(6, 45, m, NULL, 1);
+            debugMessageXY(6, 0, m, NULL, 1);
         }
         /*****************************************************************/
+#endif
         // No, return
         return 0;
     }
@@ -297,14 +331,16 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
     // Did we got address range?
     if (!strcmp(s_initial_addr, "") || !strcmp(s_final_addr, ""))
     {
+#ifdef DEBUG
         cont_fallos2++;
         /***************************  DEBUG ****************************/
         {
             char m[255];
             sprintf(m, "Sin datos: %5d   Sin rango: %5d  (%s)  Mal dirs: %5d  Repetidos: %5d     ", cont_fallos1, cont_fallos2, ip_src, cont_fallos3, cont_repetidos);
-            debugMessageXY(6, 45, m, NULL, 1);
+            debugMessageXY(6, 0, m, NULL, 1);
         }
         /*****************************************************************/
+#endif
         // No, return
         return 0;
     }
@@ -312,27 +348,31 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
     // Save range address
     if (!inet_pton(AF_INET, s_initial_addr, &key->initial_address))
     {
+#ifdef DEBUG
         cont_fallos3++;
         /***************************  DEBUG ****************************/
         {
             char m[255];
             sprintf(m, "Sin datos: %5d   Sin rango: %5d    Mal dirs: %5d  Repetidos: %5d                          ", cont_fallos1, cont_fallos2, cont_fallos3, cont_repetidos);
-            debugMessageXY(6, 45, m, NULL, 1);
+            debugMessageXY(6, 0, m, NULL, 1);
         }
         /*****************************************************************/
+#endif
         // Bad initial address. Return
         return 0;
     }
     if (!inet_pton(AF_INET, s_final_addr, &key->end_address))
     {
+#ifdef DEBUG
         cont_fallos3++;
         /***************************  DEBUG ****************************/
         {
             char m[255];
             sprintf(m, "Sin datos: %5d   Sin rango: %5d    Mal dirs: %5d  Repetidos: %5d                         ", cont_fallos1, cont_fallos2, cont_fallos3, cont_repetidos);
-            debugMessageXY(6, 45, m, NULL, 1);
+            debugMessageXY(6, 0, m, NULL, 1);
         }
         /*****************************************************************/
+#endif
         // Bad final address. Return
         return 0;
     }
@@ -465,8 +505,16 @@ void updateWhoisInfo(struct node_shared_sorted_list *node, uint32_t address, cha
             exit(1);
         }
         param_address = (uint32_t *)malloc(sizeof(uint32_t));
+        if (param_address == NULL) {
+            fprintf(stderr,"updateWhoisInfo: Could not allocate memory!!\n");
+            exit(1);				
+        }
+#ifdef DEBUG
+        w_globvars.allocated_whois += sizeof(uint32_t);
+#endif
         *param_address = address;
         pthread_create(&thread_whois, NULL, whoIs, param_address);
+        pthread_detach(thread_whois);
     }
 }
 
@@ -597,6 +645,9 @@ void readDatabaseWhois()
 
     // Initialize whois database
     init_dict(&bd_whois, compareWhois, compareWhoIsKeys);
+#ifdef DEBUG
+    w_globvars.allocated_whois += sizeof(struct info_dict) + sizeof(struct info_sorted_list);
+#endif
 
     // Database file exist?
     if (access("Whois.data", F_OK) != 0)
@@ -615,7 +666,21 @@ void readDatabaseWhois()
 
     // Read pairs (key, value) until EOF is reached
     key = (struct t_key *)malloc(sizeof(struct t_key));
+	if (key == NULL) {
+		fprintf(stderr,"readDatabaseWhois: Could not allocate memory!!\n");
+		exit(1);				
+	}
+#ifdef DEBUG
+    w_globvars.allocated_whois += sizeof(struct t_key);
+#endif
     val = (struct t_value *)malloc(sizeof(struct t_value));
+	if (val == NULL) {
+		fprintf(stderr,"readDatabaseWhois: Could not allocate memory!!\n");
+		exit(1);				
+	}
+#ifdef DEBUG
+    w_globvars.allocated_whois += sizeof(struct t_value);
+#endif
     while (fread(key, sizeof(struct t_key), 1, f) == 1)
     {
         // Try to read value
@@ -628,10 +693,27 @@ void readDatabaseWhois()
 
         // We have the full pair (key, value). Insert it in dictionary
         insert_dict(bd_whois, key, val);
+#ifdef DEBUG
+        w_globvars.allocated_whois += sizeof(struct value_dict) + sizeof(struct node_sorted_list);
+#endif
 
         // Read next pair
         key = (struct t_key *)malloc(sizeof(struct t_key));
+        if (key == NULL) {
+            fprintf(stderr,"readDatabaseWhois: Could not allocate memory!!\n");
+            exit(1);				
+        }
+#ifdef DEBUG
+        w_globvars.allocated_whois += sizeof(struct t_key);
+#endif
         val = (struct t_value *)malloc(sizeof(struct t_value));
+        if (val == NULL) {
+            fprintf(stderr,"readDatabaseWhois: Could not allocate memory!!\n");
+            exit(1);				
+        }
+#ifdef DEBUG
+        w_globvars.allocated_whois += sizeof(struct t_value);
+#endif
     }
 
     // If we reached EOF all is OK
@@ -643,6 +725,10 @@ void readDatabaseWhois()
     // Free last unused pair
     free(key);
     free(val);
+#ifdef DEBUG
+    w_globvars.allocated_whois -= sizeof(struct t_key);
+    w_globvars.allocated_whois -= sizeof(struct t_value);
+#endif
 
     // Close the file
     fclose(f);

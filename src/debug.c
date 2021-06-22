@@ -6,6 +6,8 @@
 #include <GlobalVars.h>
 #include <debug.h>
 
+#ifdef DEBUG
+
 // External Global vars
 extern struct write_global_vars w_globvars;
 
@@ -137,3 +139,5 @@ void debugMessageXY(int row, int col, char *message, attr_t *attr, unsigned prio
     }
     //sleep(3);
 }
+
+#endif

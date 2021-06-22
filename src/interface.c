@@ -44,11 +44,13 @@ int whois_visible_rows;
 int whois_visible_cols;
 int whois_top_row = 0;
 int whois_visible = 0;
+int terminal_rows;
+#ifdef DEBUG
 int debug_start_posY;
 int debug_end_posY;
 int debug_visible_rows = 0;
 int debug_top_row = 0;
-int terminal_rows;
+#endif
 
 WINDOW *main_screen, *info_panel, *result_panel, *whois_panel, *d_whois_window;
 
@@ -68,7 +70,7 @@ void selectionStart();
 void selectionEnd();
 void resetInterface();
 void quitInterface();
-void changeView();
+void changeView(); 
 void showWhoisDatabase();
 
 void *interface(void *ptr_paramt) {
@@ -76,19 +78,9 @@ void *interface(void *ptr_paramt) {
         init_curses();
     }
 
-    /**************************************** DEBUG ****************************
-    printConfDict(incoming_services_allow);
-    printConfDict(incoming_services_warning);
-    ***************************************************************************/
-
 	while (1)
 	{
         if (w_globvars.visual_mode != -1) {
-            /***************************  DEBUG ****************************/
-            char m[255];
-            sprintf(m, "En el bucle principal del interface......                                ");
-            debugMessageXY(3, 45, m, NULL, 1);
-            /*****************************************************************/
     		user_interface();
             refreshTop();
             sleep(1);
@@ -103,14 +95,6 @@ void *interface(void *ptr_paramt) {
 void user_interface()
 {
 	int key;
-
- 	/***************************  DEBUG ****************************/
-	{
-		char m[255];
-		sprintf(m, "Entrando en user_interface...                                     ");
-		debugMessageXY(3, 45, m, NULL, 1);
-	}
-	/*****************************************************************/
 
 	// User has pressed a key?
 	key = wgetch(result_panel);
@@ -169,29 +153,6 @@ void user_interface()
             selectionStart();
             break;
     }
-
- 	/***************************  DEBUG ****************************/
-	{
-		char m[255];
-		sprintf(m, "Saliendo de user_interface...                                        ");
-		debugMessageXY(3, 45, m, NULL, 1);
-	}
-	/*****************************************************************/
-
-
-    /*
-    // Want to see the history?
-    if (DEPURACION > 0)
-    {
-    	if (key == 'R' || key == 'r')
-    	{
-         	no_output = TRUE;
-            debugShowRecords(records);
-            no_output = FALSE;
-        }
-    }
-    */
-
 }
 
 void init_curses()
@@ -218,8 +179,10 @@ void init_curses()
     init_pair(3, COLOR_RED, COLOR_BLACK);
 
 
+#ifdef DEBUG
 	// Create debug panel
     init_debug_panel(INFO_LINES);
+#endif
 
 	// Resize panels
 	getPanelDimensions();
@@ -290,18 +253,57 @@ void refreshTop()
 	char s[150];
     unsigned req;
 
+#ifdef DEBUG
  	/***************************  DEBUG ****************************/
 	{
 		char m[255];
-		sprintf(m, "Entrando en refreshTop...                                        ");
-		debugMessageXY(3, 45, m, NULL, 1);
+        int cont_inbound, cont_outbound;
+
+        if (sem_wait(&w_globvars.mutex_am)) 
+        {
+            perror("refreshTop: sem_wait with mutex_am");
+            exit(1);
+        }
+		sprintf(m, "Config mem.: %0lu   Inbound mem.: %0lu   Outbound mem.: %0lu   Whois mem.: %0lu   Otros mem.: %0lu", w_globvars.allocated_config, w_globvars.allocated_packets_inbound, w_globvars.allocated_packets_outbound, w_globvars.allocated_whois, w_globvars.allocated_others);
+		if (sem_post(&w_globvars.mutex_am))
+		{
+			perror("DV_addPacket: sem_post with mutex_am");
+			exit(1);		
+		}
+		debugMessageXY(1, 0, m, NULL, 1);
+        sprintf(m, "is_allow: %0u   is_warning: %0u   is_alert: %0u   is_deny: %0u   os_allow: %0u   os_warning: %0u   os_alert: %0u   os_deny: %0u",
+                c_globvars.cont_is_allow, c_globvars.cont__is_warning, c_globvars.cont_is_alert, c_globvars.cont_is_deny, c_globvars.cont_os_allow, c_globvars.cont_os_warning, c_globvars.cont_os_alert, c_globvars.cont_os_deny);
+		debugMessageXY(2, 0, m, NULL, 1);        
+        sprintf(m, "oh_allow: %0u   oh_warning: %0u   oh_alert: %0u   oh_deny: %0u   Serv_alias: %0u",
+                c_globvars.cont_oh_allow, c_globvars.cont_oh_warning, c_globvars.cont_oh_alert, c_globvars.cont_oh_deny, c_globvars.cont_services_alias);
+		debugMessageXY(3, 0, m, NULL, 1);
+        if (w_globvars.DV_l != NULL)
+        {
+            cont_inbound = size_shared_sorted_list(w_globvars.DV_l);
+        }
+        else
+        {
+            cont_inbound = 0;
+        }
+        if (w_globvars.DV_l_outbound != NULL)
+        {
+            cont_outbound = size_shared_sorted_list(w_globvars.DV_l_outbound);
+        }
+        else
+        {
+            cont_outbound = 0;
+        }
+        sprintf(m, "Inbounds: %0u   Outbounds: %0u   Whois: %0d", cont_inbound, cont_outbound, numberOfWhoisRegisters());
+		debugMessageXY(4, 0, m, NULL, 1);
 	}
 	/*****************************************************************/
-
+#endif
     // Avoid reentries
     if (reEntry)
     {
+#ifdef DEBUG
         debugMessage("RE-ENTRY!!!!", COLOR_PAIR(0), 1);
+#endif
         return;
     }
     else
@@ -400,7 +402,7 @@ void refreshTop()
             }
             break;
     }
- 
+
     // _We never allow that selected row be after total rows
     if (result_selected_row > w_globvars.result_count_lines-1) {
         result_selected_row = w_globvars.result_count_lines-1;
@@ -411,16 +413,9 @@ void refreshTop()
         setSelection();
     }
 
-    if (DEBUG > 0 && result_visible_rows > 0)
-    {
-        mvwhline(result_panel, result_top_row+result_visible_rows-1, 0, '_', RESULT_COLS);
-    }
-    else {
-        mvwhline(result_panel, result_top_row+result_visible_rows-1, 0, '_', RESULT_COLS);
-    }
-
     if (result_visible_rows > 0)
     {
+        mvwhline(result_panel, result_top_row+result_visible_rows-1, 0, '_', RESULT_COLS);
         pnoutrefresh(result_panel, result_top_row, 0, result_start_posY, 0, result_end_posY, min(RESULT_COLS-1, COLS-1));
     }
     if (info_visible_rows > 0)
@@ -429,7 +424,6 @@ void refreshTop()
     }
     if (whois_visible_rows > 2 && whois_visible_cols > 2)
     {
-        //pnoutrefresh(whois_panel, whois_top_row, 0, whois_start_posY, whois_start_posX, whois_end_posY, whois_end_posX);
         box(d_whois_window, 0, 0);
         touchwin(whois_panel);
         pnoutrefresh(d_whois_window, 0, 0, whois_start_posY, whois_start_posX, whois_end_posY, whois_end_posX);
@@ -449,13 +443,6 @@ void refreshTop()
     }
 
     reEntry = 0;
-  	/***************************  DEBUG ****************************/
-	{
-		char m[255];
-		sprintf(m, "Saliendo de refreshTop...                                        ");
-		debugMessageXY(3, 45, m, NULL, 1);
-	}
-	/*****************************************************************/
 
    return;
 }
@@ -476,6 +463,7 @@ void getPanelDimensions()
     remaining_rows = LINES-info_visible_rows;
     if (remaining_rows > 0)
     {
+#ifdef DEBUG
         if (DEBUG > 0)
         {
             if ((int)(remaining_rows*DEBUG_SIZE) > 0)
@@ -488,6 +476,7 @@ void getPanelDimensions()
             }
             remaining_rows = remaining_rows - debug_visible_rows;
         }
+#endif
         result_visible_rows = remaining_rows;
         if (whois_visible)
         {
@@ -500,15 +489,18 @@ void getPanelDimensions()
     }
     else
     {
+#ifdef DEBUG
         if (DEBUG > 0)
         {
             debug_visible_rows = 0;
         }
+#endif
         result_visible_rows = 0;
     }
 
     // Calculate the terminal row where every panel starts
     info_start_posY = 0;
+#ifdef DEBUG
     if (debug_visible_rows > 0)
     {
         debug_start_posY = info_visible_rows + result_visible_rows;
@@ -517,6 +509,7 @@ void getPanelDimensions()
     {
         debug_start_posY = -1;
     }
+#endif
     if (result_visible_rows > 0)
     {
         result_start_posY = info_visible_rows;
@@ -539,6 +532,7 @@ void getPanelDimensions()
 
     // Calculate the terminal row where every panel ends
     info_end_posY = info_start_posY + info_visible_rows - 1;
+#ifdef DEBUG
     if (debug_start_posY >= 0)
     {
         debug_end_posY = debug_start_posY + debug_visible_rows - 1;
@@ -547,6 +541,7 @@ void getPanelDimensions()
     {
         debug_end_posY = -1;
     }
+#endif
     if (result_start_posY >= 0)
     {
         result_end_posY = result_start_posY + result_visible_rows - 1;
@@ -575,6 +570,9 @@ int getTextAttrLine(int row, chtype **text) {
             fprintf(stderr,"getTextAttrLine: Could not allocate memory!!\n");
             exit(1);				
         }
+#ifdef DEBUG
+        w_globvars.allocated_others += min(RESULT_COLS-1, COLS-1) * sizeof(chtype);
+#endif
     }
 
     nchars = mvwinchnstr(result_panel, row, 0, *text, min(RESULT_COLS-1, COLS-1));
@@ -655,20 +653,6 @@ void selectionDown()
 
     // Apply selection to the line
     setSelection();
-/* 
-    // Refresh result panel with new selection
-    if (sem_wait(&mutex_screen)) 
-    {
-        perror("selectionDown: sem_wait with mutex_screen");
-        exit(1);
-    }
-    prefresh(result_panel, result_top_row, 0, result_start_posY, 0, result_end_posY, min(RESULT_COLS-1, COLS-1));
-    if (sem_post(&mutex_screen))
-    {
-        perror("selectionDown: sem_post with mutex_screen");
-        exit(1);        
-    }
- */
 }
 
 void selectionUp()
@@ -716,20 +700,6 @@ void selectionUp()
         // Apply selection to the line
         setSelection();
     }
-
-/*     // Refresh result panel with new selection
-    if (sem_wait(&mutex_screen)) 
-    {
-        perror("selectionDown: sem_wait with mutex_screen");
-        exit(1);
-    }
-    prefresh(result_panel, result_top_row, 0, result_start_posY, 0, result_end_posY, min(RESULT_COLS-1, COLS-1));
-    if (sem_post(&mutex_screen))
-    {
-        perror("selectionDown: sem_post with mutex_screen");
-        exit(1);        
-    }
- */    
 }
 
 void selectionPageDown()
@@ -786,20 +756,6 @@ void selectionPageDown()
 
     // Apply selection to the line
     setSelection();
-
-/*     // Refresh result panel with new selection
-    if (sem_wait(&mutex_screen)) 
-    {
-        perror("selectionDown: sem_wait with mutex_screen");
-        exit(1);
-    }
-    prefresh(result_panel, result_top_row, 0, result_start_posY, 0, result_end_posY, min(RESULT_COLS-1, COLS-1));
-    if (sem_post(&mutex_screen))
-    {
-        perror("selectionDown: sem_post with mutex_screen");
-        exit(1);        
-    }
- */    
 }
 
 void selectionPageUp()
@@ -851,20 +807,6 @@ void selectionPageUp()
         // Apply selection to the line
         setSelection();
     }
-
-/*     // Refresh result panel with new selection
-    if (sem_wait(&mutex_screen)) 
-    {
-        perror("selectionDown: sem_wait with mutex_screen");
-        exit(1);
-    }
-    prefresh(result_panel, result_top_row, 0, result_start_posY, 0, result_end_posY, min(RESULT_COLS-1, COLS-1));
-    if (sem_post(&mutex_screen))
-    {
-        perror("selectionDown: sem_post with mutex_screen");
-        exit(1);        
-    }
- */    
 }
 
 void selectionStart()
@@ -902,20 +844,6 @@ void selectionStart()
 
     // Apply selection to the line
     setSelection();
-
-/*     // Refresh result panel with new selection
-    if (sem_wait(&mutex_screen)) 
-    {
-        perror("selectionDown: sem_wait with mutex_screen");
-        exit(1);
-    }
-    prefresh(result_panel, result_top_row, 0, result_start_posY, 0, result_end_posY, min(RESULT_COLS-1, COLS-1));
-    if (sem_post(&mutex_screen))
-    {
-        perror("selectionDown: sem_post with mutex_screen");
-        exit(1);        
-    }
- */    
 }
 
 void selectionEnd()
@@ -955,20 +883,6 @@ void selectionEnd()
 
     // Apply selection to the line
     setSelection();
-
-/*     // Refresh result panel with new selection
-    if (sem_wait(&mutex_screen)) 
-    {
-        perror("selectionDown: sem_wait with mutex_screen");
-        exit(1);
-    }
-    prefresh(result_panel, result_top_row, 0, result_start_posY, 0, result_end_posY, min(RESULT_COLS-1, COLS-1));
-    if (sem_post(&mutex_screen))
-    {
-        perror("selectionDown: sem_post with mutex_screen");
-        exit(1);        
-    }
- */    
 }
     
 void resetInterface()
@@ -1026,13 +940,6 @@ void changeView()
     // If visual mode needs intranet device and it doesn't set then return
     if (new_visual_mode == 2 && c_globvars.intranet_dev == NULL) {
         // Can't do NAT view. There is not intranet device
-        /***************************  DEBUG ***************************/
-        {
-            char m[100];
-            sprintf(m, "Can't change to NAT view. There is not intranet device");
-            debugMessageXY(5, 0, m, NULL, 1);
-        }
-        /****************************************************************/
         return;
     }
 
@@ -1041,37 +948,18 @@ void changeView()
         case 0:
             // Default view
             // Can't do NAT view. There is not intranet device
-            /***************************  DEBUG ***************************/
-            {
-                char m[100];
-                sprintf(m, "Resetting view 0");
-                debugMessageXY(2, 0, m, NULL, 1);
-            }
-            /****************************************************************/
             DV_Reset();
             break;
 
         case 1:
             // Grouped source IP view
             // Can't do NAT view. There is not intranet device
-            /***************************  DEBUG ***************************/
-            {
-                char m[100];
-                sprintf(m, "Resetting view 1");
-                debugMessageXY(2, 0, m, NULL, 1);
-            }
             IPG_Reset();
             break;
 
         case 2:
             // NAT view
             // Can't do NAT view. There is not intranet device
-            /***************************  DEBUG ***************************/
-            {
-                char m[100];
-                sprintf(m, "Resetting view 2");
-                debugMessageXY(2, 0, m, NULL, 1);
-            }
             OV_Reset();
             break;
     }

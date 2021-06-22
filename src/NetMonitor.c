@@ -107,7 +107,19 @@ int main(int argc, char *argv[])
         fprintf(stderr, "%s: Couldn't create mutex_cont_whois_threads semaphore!!!!", argv[0]);
         return 1;
     }
-	
+#ifdef DEBUG
+   	if (sem_init(&w_globvars.mutex_am, 0, 1))
+    {       
+        fprintf(stderr, "%s: Couldn't create mutex_am semaphore!!!!", argv[0]);
+        return 1;
+    }
+	w_globvars.allocated_config = 0;
+	w_globvars.allocated_packets_inbound = 0;
+	w_globvars.allocated_packets_outbound = 0;
+	w_globvars.allocated_whois = 0;
+	w_globvars.allocated_others = 0;
+#endif
+
 	// Read Whois BD
 	readDatabaseWhois();
 
@@ -145,6 +157,9 @@ int main(int argc, char *argv[])
 	sem_destroy(&w_globvars.mutex_bd_whois);
 	sem_destroy(&w_globvars.mutex_cont_requests);
 	sem_destroy(&w_globvars.mutex_cont_whois_threads);
+#ifdef DEBUG
+	sem_destroy(&w_globvars.mutex_am);
+#endif
 
 	// Save whois database
 	writeDatabaseWhois();

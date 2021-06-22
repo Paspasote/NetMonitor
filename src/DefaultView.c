@@ -73,6 +73,19 @@ void DV_createList() {
 		perror("DV_createList: sem_post with mutex_packages_list");
 		exit(1);		
 	}
+#ifdef DEBUG
+	if (sem_wait(&w_globvars.mutex_am)) 
+	{
+		perror("DV_createList: sem_wait with mutex_am");
+		exit(1);
+	}
+	w_globvars.allocated_packets_inbound += sizeof(struct info_shared_sorted_list);
+	if (sem_post(&w_globvars.mutex_am))
+	{
+		perror("DV_createList: sem_post with mutex_am");
+		exit(1);		
+	}
+#endif
 }
 
 int DV_isValidList_outbound() {
@@ -105,6 +118,19 @@ void DV_createList_outbound() {
 		perror("DV_createList_outbound: sem_post with mutex_outbound_list");
 		exit(1);		
 	}
+#ifdef DEBUG
+	if (sem_wait(&w_globvars.mutex_am)) 
+	{
+		perror("DV_createList_outbound: sem_wait with mutex_am");
+		exit(1);
+	}
+	w_globvars.allocated_packets_outbound += sizeof(struct info_shared_sorted_list);
+	if (sem_post(&w_globvars.mutex_am))
+	{
+		perror("DV_createList_outbound: sem_post with mutex_am");
+		exit(1);		
+	}
+#endif
 }
 
 void DV_Reset() {
@@ -291,7 +317,7 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 			}
 			else {
 				servinfo = getservbyport(htons(info->shared_info.tcp_info.dport), s_protocol);
-				if (servinfo != NULL && servinfo->s_name != NULL && strcmp(servinfo->s_name, "")) {
+				if (servinfo != NULL && strcmp(servinfo->s_name, "")) {
 					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, servinfo->s_name);
 				}
 				else {
@@ -369,7 +395,7 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 			}
 			else {
 				servinfo = getservbyport(htons(info->shared_info.udp_info.dport), s_protocol);
-				if (servinfo != NULL && servinfo->s_name != NULL && strcmp(servinfo->s_name, "")) {
+				if (servinfo != NULL && strcmp(servinfo->s_name, "")) {
 					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, servinfo->s_name);
 				}
 				else {
@@ -438,7 +464,19 @@ void DV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const 
 		fprintf(stderr,"DV_addPacket: Could not allocate memory!!\n");
 		exit(1);				
 	}
-
+#ifdef DEBUG
+	if (sem_wait(&w_globvars.mutex_am)) 
+	{
+		perror("DV_addPacket: sem_wait with mutex_am");
+		exit(1);
+	}
+	w_globvars.allocated_packets_inbound += sizeof(struct DV_info);
+	if (sem_post(&w_globvars.mutex_am))
+	{
+		perror("DV_addPacket: sem_post with mutex_am");
+		exit(1);		
+	}
+#endif
 	// Store IP Protocol
 	new_info->ip_protocol = ip->ip_p;
 	info_outbound.ip_protocol = new_info->ip_protocol;
@@ -508,6 +546,19 @@ void DV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const 
 		info = new_info;
 		info->last_connections = NULL;
 		init_double_list(&info->last_connections);
+#ifdef DEBUG
+		if (sem_wait(&w_globvars.mutex_am)) 
+		{
+			perror("DV_addPacket: sem_wait with mutex_am");
+			exit(1);
+		}
+		w_globvars.allocated_packets_inbound += sizeof(struct info_double_list);
+		if (sem_post(&w_globvars.mutex_am))
+		{
+			perror("DV_addPacket: sem_post with mutex_am");
+			exit(1);		
+		}
+#endif
 		info->hits = 0;
 		info->total_bytes = 0;
 		strcpy(info->country, "");
@@ -520,11 +571,37 @@ void DV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const 
 		info = (struct DV_info *) node->info;
 		// Free new info
 		free(new_info);
+#ifdef DEBUG
+		if (sem_wait(&w_globvars.mutex_am)) 
+		{
+			perror("DV_addPacket: sem_wait with mutex_am");
+			exit(1);
+		}
+		w_globvars.allocated_packets_inbound -= sizeof(struct DV_info);
+		if (sem_post(&w_globvars.mutex_am))
+		{
+			perror("DV_addPacket: sem_post with mutex_am");
+			exit(1);		
+		}
+#endif
 		// Request write access
 		requestWriteNode_shared_sorted_list(node);
 		if (syn) {
 			// New connection. Remove all last connections
 			clear_all_double_list(info->last_connections, 1, NULL, NULL);
+#ifdef DEBUG
+			if (sem_wait(&w_globvars.mutex_am)) 
+			{
+				perror("DV_addPacket: sem_wait with mutex_am");
+				exit(1);
+			}
+			w_globvars.allocated_packets_inbound -= size_double_list(info->last_connections) * (sizeof(struct DV_info_bandwidth)+sizeof(struct node_double_list));
+			if (sem_post(&w_globvars.mutex_am))
+			{
+				perror("DV_addPacket: sem_post with mutex_am");
+				exit(1);		
+			}
+#endif
 			info->total_bytes = 0;
 			info->response = 0;
 			info->stablished = 0;
@@ -568,10 +645,35 @@ void DV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const 
 		fprintf(stderr,"DV_addPacket: Could not allocate memory!!\n");
 		exit(1);				
 	}
+#ifdef DEBUG
+	if (sem_wait(&w_globvars.mutex_am)) 
+	{
+		perror("DV_addPacket: sem_wait with mutex_am");
+		exit(1);
+	}
+	w_globvars.allocated_packets_inbound += sizeof(struct DV_info_bandwidth);
+	if (sem_post(&w_globvars.mutex_am))
+	{
+		perror("DV_addPacket: sem_post with mutex_am");
+		exit(1);		
+	}
+#endif
 	info_bandwidth->time = info->time;
 	info_bandwidth->n_bytes = n_bytes;
  	insert_tail_double_list(info->last_connections, (void *)info_bandwidth);
-
+#ifdef DEBUG
+	if (sem_wait(&w_globvars.mutex_am)) 
+	{
+		perror("DV_addPacket: sem_wait with mutex_am");
+		exit(1);
+	}
+	w_globvars.allocated_packets_inbound += sizeof(struct node_double_list);
+	if (sem_post(&w_globvars.mutex_am))
+	{
+		perror("DV_addPacket: sem_post with mutex_am");
+		exit(1);		
+	}
+#endif
 	// Calculate bandwidth
 	DV_updateBandwidth(info, now);
 
@@ -579,6 +681,19 @@ void DV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const 
 	if (node == NULL) {
 		// Insert the new connection in the list
 		insert_shared_sorted_list(w_globvars.DV_l, info);
+#ifdef DEBUG
+		if (sem_wait(&w_globvars.mutex_am)) 
+		{
+			perror("DV_addPacket: sem_wait with mutex_am");
+			exit(1);
+		}
+		w_globvars.allocated_packets_inbound += sizeof(struct node_shared_sorted_list);
+		if (sem_post(&w_globvars.mutex_am))
+		{
+			perror("DV_addPacket: sem_post with mutex_am");
+			exit(1);		
+		}
+#endif
 	}
 	else {
 		// No more write access needed
@@ -625,7 +740,19 @@ void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,
 		fprintf(stderr,"DV_addPacket_outbound: Could not allocate memory!!\n");
 		exit(1);				
 	}
-
+#ifdef DEBUG
+	if (sem_wait(&w_globvars.mutex_am)) 
+	{
+		perror("DV_addPacket_outbound: sem_wait with mutex_am");
+		exit(1);
+	}
+	w_globvars.allocated_packets_outbound += sizeof(struct DV_info_outbound);
+	if (sem_post(&w_globvars.mutex_am))
+	{
+		perror("DV_addPacket_outbound: sem_post with mutex_am");
+		exit(1);		
+	}
+#endif
 	// Store time
 	new_info->time = now;
 
@@ -678,6 +805,19 @@ void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,
 				if (now - w_globvars.view_started <= THRESHOLD_ESTABLISHED_CONNECTIONS) {
 					// Waiting por posible incoming connections. Discard UDP connection
 					free(new_info);
+#ifdef DEBUG
+					if (sem_wait(&w_globvars.mutex_am)) 
+					{
+						perror("DV_addPacket_outbound: sem_wait with mutex_am");
+						exit(1);
+					}
+					w_globvars.allocated_packets_outbound -= sizeof(struct DV_info_outbound);
+					if (sem_post(&w_globvars.mutex_am))
+					{
+						perror("DV_addPacket_outbound: sem_post with mutex_am");
+						exit(1);		
+					}
+#endif
 					return;
 				}
 				// Checking if there is a relative incoming connection. 
@@ -695,12 +835,38 @@ void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,
 
 		// Insert the new connection in the list
 		insert_shared_sorted_list(w_globvars.DV_l_outbound, new_info);
+#ifdef DEBUG
+		if (sem_wait(&w_globvars.mutex_am)) 
+		{
+			perror("DV_addPacket_outbound: sem_wait with mutex_am");
+			exit(1);
+		}
+		w_globvars.allocated_packets_outbound += sizeof(struct node_shared_sorted_list);
+		if (sem_post(&w_globvars.mutex_am))
+		{
+			perror("DV_addPacket_outbound: sem_post with mutex_am");
+			exit(1);		
+		}
+#endif
 	}
 	else {
 		// Connection already exists. Get its information
 		info = (struct DV_info_outbound *) node->info;
 		// Free new info
 		free(new_info);
+#ifdef DEBUG
+		if (sem_wait(&w_globvars.mutex_am)) 
+		{
+			perror("DV_addPacket_outbound: sem_wait with mutex_am");
+			exit(1);
+		}
+		w_globvars.allocated_packets_outbound -= sizeof(struct DV_info_outbound);
+		if (sem_post(&w_globvars.mutex_am))
+		{
+			perror("DV_addPacket_outbound: sem_post with mutex_am");
+			exit(1);		
+		}
+#endif
 		// Request write access
 		requestWriteNode_shared_sorted_list(node);
 
@@ -712,12 +878,25 @@ void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,
 			// If there is one then we mark the incoming connection as a response and stablished connection
 			node_reverse = NULL;
 			if (DV_isValidList()) {
-				node_reverse = exclusiveFind_shared_sorted_list(w_globvars.DV_l, new_info, DV_Reverse);
+				node_reverse = exclusiveFind_shared_sorted_list(w_globvars.DV_l, info, DV_Reverse);
 			}
 			if (node_reverse != NULL)
 			{
 				requestWriteNode_shared_sorted_list(node_reverse);
 				clear_all_double_list(((struct DV_info *)node_reverse->info)->last_connections, 1, NULL, NULL);
+#ifdef DEBUG
+				if (sem_wait(&w_globvars.mutex_am)) 
+				{
+					perror("DV_addPacket_outbound: sem_wait with mutex_am");
+					exit(1);
+				}
+				w_globvars.allocated_packets_inbound -= size_double_list(((struct DV_info *)node_reverse->info)->last_connections) * (sizeof(struct DV_info_bandwidth)+sizeof(struct node_double_list));
+				if (sem_post(&w_globvars.mutex_am))
+				{
+					perror("DV_addPacket_outbound: sem_post with mutex_am");
+					exit(1);		
+				}
+#endif
 				((struct DV_info *)node_reverse->info)->total_bytes = 0;
 				((struct DV_info *)node_reverse->info)->response = 1;
 				((struct DV_info *)node_reverse->info)->stablished = 1;
@@ -752,6 +931,19 @@ void DV_updateBandwidth(struct DV_info *info, time_t now) {
 		if (!stop) {
 			// We have to remove this last connection
 			remove_front_double_list(info->last_connections, 1);
+#ifdef DEBUG
+			if (sem_wait(&w_globvars.mutex_am)) 
+			{
+				perror("DV_addPacket: sem_wait with mutex_am");
+				exit(1);
+			}
+			w_globvars.allocated_packets_inbound -= sizeof(struct DV_info_bandwidth)+sizeof(struct node_double_list);
+			if (sem_post(&w_globvars.mutex_am))
+			{
+				perror("DV_addPacket: sem_post with mutex_am");
+				exit(1);		
+			}
+#endif
 		}
 	}
 
@@ -784,8 +976,34 @@ void DV_freeLastConnections(void *val, void *param) {
 
 	// Clear Bandwidth info
 	clear_all_double_list(info->last_connections, 1, NULL, NULL);
+#ifdef DEBUG
+	if (sem_wait(&w_globvars.mutex_am)) 
+	{
+		perror("DV_addPacket: sem_wait with mutex_am");
+		exit(1);
+	}
+	w_globvars.allocated_packets_inbound -= size_double_list(info->last_connections) * (sizeof(struct DV_info_bandwidth)+sizeof(struct node_double_list));
+	if (sem_post(&w_globvars.mutex_am))
+	{
+		perror("DV_addPacket: sem_post with mutex_am");
+		exit(1);		
+	}
+#endif
 	// Free memory
 	free(info->last_connections);
+#ifdef DEBUG
+	if (sem_wait(&w_globvars.mutex_am)) 
+	{
+		perror("DV_freeLastConnections: sem_wait with mutex_am");
+		exit(1);
+	}
+	w_globvars.allocated_packets_inbound -= sizeof(struct info_double_list);
+	if (sem_post(&w_globvars.mutex_am))
+	{
+		perror("DV_freeLastConnections: sem_post with mutex_am");
+		exit(1);		
+	}
+#endif
 }
 
 void DV_Purge() {
@@ -831,7 +1049,22 @@ void DV_Purge() {
 			node = nextNode_shared_sorted_list(w_globvars.DV_l, node, 0);
 			// Removing current node
 			DV_freeLastConnections(current_node->info, NULL);
-			removeNode_shared_sorted_list(w_globvars.DV_l, current_node, 1);
+			if (removeNode_shared_sorted_list(w_globvars.DV_l, current_node, 1))
+			{
+#ifdef DEBUG
+				if (sem_wait(&w_globvars.mutex_am)) 
+				{
+					perror("DV_Purge: sem_wait with mutex_am");
+					exit(1);
+				}
+				w_globvars.allocated_packets_inbound -= sizeof(struct DV_info)+sizeof(struct node_shared_sorted_list);
+				if (sem_post(&w_globvars.mutex_am))
+				{
+					perror("DV_Purge: sem_post with mutex_am");
+					exit(1);		
+				}
+#endif
+			}
 		}
 		else {
 			// Update bandwidth
@@ -889,7 +1122,22 @@ void DV_Purge_outbound() {
 			// Before remove current node get the next one
 			node = nextNode_shared_sorted_list(w_globvars.DV_l_outbound, node, 0);
 			// Removing current node
-			removeNode_shared_sorted_list(w_globvars.DV_l_outbound, current_node, 1);
+			if (removeNode_shared_sorted_list(w_globvars.DV_l_outbound, current_node, 1))
+			{
+#ifdef DEBUG
+				if (sem_wait(&w_globvars.mutex_am)) 
+				{
+					perror("DV_Purge: sem_wait with mutex_am");
+					exit(1);
+				}
+				w_globvars.allocated_packets_outbound -= sizeof(struct DV_info_outbound)+sizeof(struct node_shared_sorted_list);
+				if (sem_post(&w_globvars.mutex_am))
+				{
+					perror("DV_Purge: sem_post with mutex_am");
+					exit(1);		
+				}
+#endif
+			}
 		}
 		else {
 			// Leave read access

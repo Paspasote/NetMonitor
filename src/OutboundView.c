@@ -111,14 +111,6 @@ void OV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 	char total_bytes[20];
 	char *service_alias;
 
-	/***************************  DEBUG ****************************/
-	{
-		char m[255];
-		sprintf(m, "Entrando en OV_ShowElement...                                          ");
-		debugMessageXY(3, 45, m, NULL, 1);
-	}
-	/*****************************************************************/
-
 	info = (struct OV_info *)node->info;
 
 	now = time(NULL);
@@ -232,14 +224,6 @@ void OV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 }
 
 void OV_ShowInfo() {  
-	/***************************  DEBUG ****************************/
-	{
-		char m[255];
-		sprintf(m, "Entrando en OV_ShowInfo...                                          ");
-		debugMessageXY(3, 45, m, NULL, 1);
-	}
-	/*****************************************************************/
-
 	// List is valid?
 	if (!OV_isValidList())
 	{
@@ -249,14 +233,6 @@ void OV_ShowInfo() {
 	// Iterate the list and show info on screen
 	w_globvars.result_count_lines = 0;
 	for_eachNode_shared_sorted_list(w_globvars.OV_l, OV_ShowElement, NULL);
-	//for_each_readonly_shared_sorted_list(w_globvars.OV_l, OV_ShowElement, NULL);
- 	/***************************  DEBUG ****************************/
-	{
-		char m[255];
-		sprintf(m, "Saliendo de OV_ShowInfo...                                        ");
-		debugMessageXY(3, 45, m, NULL, 1);
-	}
-	/*****************************************************************/
 }
 
 void OV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
@@ -268,14 +244,6 @@ void OV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const 
 	struct node_shared_sorted_list *node;
 	struct OV_info_bandwidth *info_bandwidth;
 	uint16_t src_port, dst_port;
-
-	/***************************  DEBUG ****************************/
-	{
-		char m[255];
-		sprintf(m, "Entrando en OV_addPacket...                                          ");
-		debugMessageXY(1, 45, m, NULL, 1);
-	}
-	/*****************************************************************/
 
 	// Protocol wanted??
 	if (ip->ip_p != IPPROTO_ICMP && ip->ip_p != IPPROTO_TCP && ip->ip_p != IPPROTO_UDP) {
@@ -404,20 +372,6 @@ void OV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const 
 		// Leaving current node
 		leaveNode_shared_sorted_list(w_globvars.OV_l, node);
 	}
-	/***************************  DEBUG ****************************/
-	{
-		char m[100];
-		sprintf(m, "List size: %-5u", size_shared_sorted_list(w_globvars.OV_l));
-		debugMessageXY(1, 0, m, NULL, 1);
-	}
-	/****************************************************************/
-	/***************************  DEBUG ****************************/
-	{
-		char m[255];
-		sprintf(m, "Saliendo de OV_addPacket...                                        ");
-		debugMessageXY(1, 45, m, NULL, 1);
-	}
-	/*****************************************************************/
 }
 
 void OV_updateBandwidth(struct OV_info *info, time_t now) {
@@ -425,14 +379,6 @@ void OV_updateBandwidth(struct OV_info *info, time_t now) {
 	struct OV_info_bandwidth *info_bandwidth;	
 	time_t t;
 	int stop;
-
-	/***************************  DEBUG ****************************/
-	{
-		char m[255];
-		sprintf(m, "Entrando en OV_updateBandwidth...                                    ");
-		debugMessageXY(3, 45, m, NULL, 1);
-	}
-	/*****************************************************************/
 
 	// First, we remove all connections older than MAX_INTERVAL_BANDWIDTH seconds
 	stop = 0;
@@ -542,15 +488,6 @@ void OV_Purge() {
 	time_t now;
 	unsigned timeout;
 	float old_bandwidth;
-
-	/***************************  DEBUG ****************************/
-	{
-		char m[255];
-		sprintf(m, "Entrando en OV_Purge...                                        ");
-		debugMessageXY(3, 45, m, NULL, 1);
-	}
-	/*****************************************************************/
-
 
 	// List is valid?
 	if (!OV_isValidList())
