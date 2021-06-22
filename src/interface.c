@@ -6,7 +6,6 @@
 #include <semaphore.h>
 #include <pthread.h>
 
-#include <debug.h>
 #include <misc.h>
 #include <GlobalVars.h>
 #include <NetMonitor.h>
@@ -14,6 +13,9 @@
 #include <DefaultView.h>
 #include <IPGroupedView.h>
 #include <OutboundView.h>
+#ifdef DEBUG
+#include <debug.h>
+#endif
 
 #include <interface.h>
 

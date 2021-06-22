@@ -1,3 +1,5 @@
+#ifdef DEBUG
+
 #include <stdlib.h>
 #include <ncurses.h>
 #include <semaphore.h>
@@ -6,7 +8,6 @@
 #include <GlobalVars.h>
 #include <debug.h>
 
-#ifdef DEBUG
 
 // External Global vars
 extern struct write_global_vars w_globvars;

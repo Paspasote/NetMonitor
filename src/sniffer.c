@@ -15,15 +15,18 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include <debug.h>
 #include <GlobalVars.h>
 #include <Configuration.h>
 #include <NetMonitor.h>
-#include <sniffer.h>
 #include <PacketList.h>
 #include <DefaultView.h>
 #include <IPGroupedView.h>
 #include <OutboundView.h>
+#ifdef DEBUG
+#include <debug.h>
+#endif
+
+#include <sniffer.h>
 
 // EXTERNAL Global vars
 extern struct const_global_vars c_globvars;

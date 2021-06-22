@@ -7,13 +7,15 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 
-#include <debug.h>
 #include <misc.h>
 #include <GlobalVars.h>
 #include <SharedSortedList.h>
 #include <Configuration.h>
 #include <iptables.h>
 #include <interface.h>
+#ifdef DEBUG
+#include <debug.h>
+#endif
 #include <IPGroupedView.h>
 
 // EXTERNAL Global vars

@@ -16,8 +16,11 @@
 #include <WhoIs.h>
 #include <iptables.h>
 #include <interface.h>
-#include <DefaultView.h>
+#ifdef DEBUG
 #include <debug.h>
+#endif
+
+#include <DefaultView.h>
 
 // EXTERNAL Global vars
 extern struct const_global_vars c_globvars;

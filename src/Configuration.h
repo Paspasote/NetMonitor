@@ -38,10 +38,6 @@ int outgoing_packetAllowed(struct in_addr address, unsigned protocol, unsigned p
 char *serviceAlias(unsigned protocol, unsigned port);
 char *serviceShortAlias(unsigned protocol, unsigned port);
 
-/************************************** DEBUG *********************/
-void printConfDict(dictionary d);
-/******************************************************************/
-
 // Types
 struct ports_range {
 	unsigned lower;

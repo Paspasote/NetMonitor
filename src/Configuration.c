@@ -4,9 +4,13 @@
 #include <ctype.h>
 #include <netinet/ip.h>
 
-#include <Configuration.h>
 #include <misc.h>
+#ifdef DEBUG
 #include <debug.h>
+#include <GlobalVars.h>
+#endif
+
+#include <Configuration.h>
 
 // Function prototypes
 void processServiceConfig(dictionary *d, char *filename);

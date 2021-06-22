@@ -17,11 +17,12 @@
 #include <GlobalVars.h>
 #include <Configuration.h>
 #include <WhoIs.h>
-#include <NetMonitor.h>
 #include <sniffer.h>
 #include <interface.h>
 #include <WhoIs.h>
 #include <iptables.h>
+
+#include <NetMonitor.h>
 
 // EXTERNAL Global vars
 extern struct const_global_vars c_globvars;

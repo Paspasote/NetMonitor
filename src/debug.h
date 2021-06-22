@@ -1,6 +1,8 @@
 #ifndef __DEBUG_H
 #define __DEBUG_H
 
+#ifdef DEBUG
+
 #include <ncurses.h>
 
 // Constants
@@ -11,7 +13,6 @@
 // Example: -DDEBUG=1
 
 // Panel size
-#ifdef DEBUG
 
 #define DEBUG_LINES		10
 #define DEBUG_COLS		150

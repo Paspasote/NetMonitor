@@ -8,12 +8,15 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 
-#include <debug.h>
 #include <GlobalVars.h>
 #include <Configuration.h>
 #include <SharedSortedList.h>
 #include <Configuration.h>
 #include <interface.h>
+#ifdef DEBUG
+#include <debug.h>
+#endif
+
 #include <OutboundView.h>
 
 // EXTERNAL Global vars

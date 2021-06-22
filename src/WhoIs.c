@@ -11,15 +11,18 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#include <debug.h>
 #include <GlobalVars.h>
 #include <Configuration.h>
 #include <SharedSortedList.h>
 #include <Dictionary.h>
-#include <WhoIs.h>
 #include <interface.h>
 #include <DefaultView.h>
 #include <IPGroupedView.h>
+#ifdef DEBUG
+#include <debug.h>
+#endif
+
+#include <WhoIs.h>
 
 // EXTERNAL Global vars
 struct write_global_vars w_globvars;
