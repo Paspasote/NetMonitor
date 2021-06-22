@@ -154,11 +154,12 @@ void remove_shared_sorted_list(shared_sorted_list l, void *val, int free_info, i
    ERROR: If list is not initialized
 */
 
-void removeNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node, int free_info);
+int removeNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node, int free_info);
 /* NEEDS: A list already initialized
           A node of the list
           A boolean (int)
    MODIFIES: Remove the node. If free_info is 1 the free operation over info node will be called before remove
+   RETURNS: 1 (true) if really removing node, 0 (false) is another one is going to remove it
    NOTE1: The node will be removed when no one is accessing to it. IT IS NOT NEEDED to call any request operation
    ERROR: If list is not initialized
 */

@@ -745,7 +745,7 @@ void remove_shared_sorted_list(shared_sorted_list l, void *val, int free_info, i
 	}
 }
 
-void removeNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node, int free_info) 
+int removeNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node, int free_info) 
 {
 	struct node_shared_sorted_list *prev_node, *next_node;
 
@@ -757,7 +757,7 @@ void removeNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sort
 
 	if (!requestRemoveNode_shared_sorted_list(l, node)) {
 		// Someone else is going to remove this node. Returning now
-		return;
+		return 0;
 	}
 
 	// We can now remove the node safely
@@ -803,6 +803,7 @@ void removeNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sort
 		exit(1);
 	}
 
+	return 1;
 }
 
 void updateNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node) {
