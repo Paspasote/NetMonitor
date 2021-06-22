@@ -384,7 +384,7 @@ int match_rule(char *net_device, uint8_t proto, uint32_t s_address, u_int16_t sp
     // Are there match extensions in the rule?
     match = (struct ipt_entry_match *)entry->elems;
     current_offset = 0;
-    while (strcmp(match->u.user.name, ""))
+    while (current_offset + (u_int16_t)(sizeof(struct ipt_entry)) < entry->target_offset)
     {
         processed_module = 0;
         if (!strcasecmp(match->u.user.name, "multiport"))
@@ -483,6 +483,7 @@ int actionIncoming(char *net_device, uint8_t proto, uint32_t s_address, u_int16_
             fprintf(f, "Error al validar conexión: Dev: %s  Proto: %d  SAddr: %s  SPort: %0u  DAddr: %s  DPort: %0u  Flags_TCP/ICMP_Type: %0u  ICMP_Code: %0u  New: %0d\n",
                     net_device, proto, s_ip_src, sport, s_ip_dst, dport, flags_type, code, new_connection);
             fclose(f);
+            iptc_free(p);
             return -1;
         }
         // A match rule has been founded?
@@ -497,6 +498,7 @@ int actionIncoming(char *net_device, uint8_t proto, uint32_t s_address, u_int16_
                 matched = actionIncoming(net_device, proto, s_address, sport, d_address, dport, flags_type, code, new_connection, target);
                 if (matched)
                 {
+                    iptc_free(p);
                     return matched;
                 }
             }
@@ -505,26 +507,32 @@ int actionIncoming(char *net_device, uint8_t proto, uint32_t s_address, u_int16_
                 // Target is not a chain
                 if (!strcasecmp(target, "RETURN"))
                 {
+                    iptc_free(p);
                     return 0;
                 }
                 if (!strcasecmp(target, "ACCEPT"))
                 {
+                    iptc_free(p);
                     return 1;
                 }
                 if (!strcasecmp(target, "DROP"))                
                 {
                     if (!strcasecmp(chain_name, BLACKLIST_CHAIN))
                     {
+                        iptc_free(p);
                         return 4;
                     }
+                    iptc_free(p);
                     return 2;
                 }
                 if (!strcasecmp(target, "REJECT"))
                 {
                     if (!strcasecmp(chain_name, BLACKLIST_CHAIN))
                     {
+                        iptc_free(p);
                         return 4;
                     }
+                    iptc_free(p);
                     return 3;
                 }
             }
@@ -543,17 +551,22 @@ int actionIncoming(char *net_device, uint8_t proto, uint32_t s_address, u_int16_
         default_target = iptc_get_policy("INPUT", &counters, p);
         if (!strcasecmp(default_target, "ACCEPT"))
         {
+            iptc_free(p);
             return 1;
         }
         if (!strcasecmp(default_target, "DROP"))                
         {
+            iptc_free(p);
             return 2;
         }
         if (!strcasecmp(default_target, "REJECT"))
         {
+            iptc_free(p);
             return 3;
         }
+        iptc_free(p);
         return -1;
 }
+    iptc_free(p);
     return 0;
 }
