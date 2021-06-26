@@ -349,7 +349,7 @@ void refreshTop()
     mvwaddstr(info_panel, 0, 0, s);
 
     // Show menu on info panel
-    waddstr(info_panel, "V-Change View  Q-Exit\n\n");
+    waddstr(info_panel, "V-Change View  W-Toggle Whois database view  Q-Quit\n\n");
 
     // Show info with the view selected by user or with the default view
     switch (w_globvars.visual_mode) {
@@ -360,7 +360,7 @@ void refreshTop()
             waddstr(info_panel, s);
            
             // Show horizontal line
-            whline(info_panel, '-', INFO_COLS);
+            whline(info_panel, 0, INFO_COLS);
 
             // Clear timeout connections
             DV_Purge();
@@ -377,7 +377,7 @@ void refreshTop()
             waddstr(info_panel, s);
            
             // Show horizontal line
-            whline(info_panel, '-', INFO_COLS);
+            whline(info_panel, 0, INFO_COLS);
 
             // Clear timeout connections
             IPG_Purge();
@@ -394,7 +394,7 @@ void refreshTop()
             waddstr(info_panel, s);
            
             // Show horizontal line
-            whline(info_panel, '-', INFO_COLS);
+            whline(info_panel, 0, INFO_COLS);
 
             // Clear timeout connections
             OV_Purge();
@@ -417,7 +417,7 @@ void refreshTop()
 
     if (result_visible_rows > 0)
     {
-        mvwhline(result_panel, result_top_row+result_visible_rows-1, 0, '_', RESULT_COLS);
+        mvwhline(result_panel, result_top_row+result_visible_rows-1, 0, 0, RESULT_COLS);
         pnoutrefresh(result_panel, result_top_row, 0, result_start_posY, 0, result_end_posY, min(RESULT_COLS-1, COLS-1));
     }
     if (info_visible_rows > 0)
