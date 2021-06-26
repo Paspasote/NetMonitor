@@ -168,6 +168,9 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
     char delim1[2] = ":";
     char delim2[3] = " \t";
     char *p;
+#ifdef DEBUG
+    FILE *f;
+#endif
 
     // Create a unnamed pipe to get whois output
     if (pipe(pipe_fd) == -1)
@@ -314,6 +317,10 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
     // Close pipe
     close(pipe_fd[0]);
 
+#ifdef DEBUG
+    f = fopen("Whois.log", "at");
+#endif
+
     // Did we got any info?
     if (!strcmp(local_country, "") && !strcmp(local_netname, ""))
     {
@@ -326,6 +333,8 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
             debugMessageXY(6, 0, m, NULL, 1);
         }
         /*****************************************************************/
+        fprintf(f, "%s: Sin datos\n", ip_src);
+        fclose(f);
 #endif
         // No, return
         return 0;
@@ -343,6 +352,8 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
             debugMessageXY(6, 0, m, NULL, 1);
         }
         /*****************************************************************/
+        fprintf(f, "%s: Sin rango\n", ip_src);
+        fclose(f);
 #endif
         // No, return
         return 0;
@@ -360,6 +371,8 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
             debugMessageXY(6, 0, m, NULL, 1);
         }
         /*****************************************************************/
+        fprintf(f, "%s: Rango de direcciones incorrecto\n", ip_src);
+        fclose(f);
 #endif
         // Bad initial address. Return
         return 0;
@@ -375,10 +388,16 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
             debugMessageXY(6, 0, m, NULL, 1);
         }
         /*****************************************************************/
+        fprintf(f, "%s: Rango de direcciones incorrecto\n", ip_src);
+        fclose(f);
 #endif
         // Bad final address. Return
         return 0;
     }
+
+#ifdef DEBUG
+    fclose(f);
+#endif
 
     // If it is a private address reset country
     if (!strncmp(local_netname, "INTRANET", MAX_LEN_NETNAME))
