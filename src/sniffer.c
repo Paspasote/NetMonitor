@@ -203,7 +203,7 @@ void catch_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *
 		// fprintf(stderr, "* Invalid IP header length: %u bytes\n", size_ip_header);
 		return;
 	}
-	total_bytes = eth_header_size + ip->ip_len;	
+	total_bytes = eth_header_size + ntohs(ip->ip_len);
 
 	// Protocol?
 	switch (ip->ip_p) {
