@@ -10,9 +10,9 @@
 
 // Panel sizes
 #define INFO_LINES		5
-#define INFO_COLS		150
+#define INFO_COLS		250
 #define RESULT_LINES	500
-#define RESULT_COLS		150
+#define RESULT_COLS		250
 #define WHOIS_COLS      MAX_LEN_COUNTRY + MAX_LEN_NETNAME + 56
 
 
