@@ -258,7 +258,7 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
                     p = strtok(p, delim2);
                     if (p != NULL) {
                         // Got it! Save country code
-                        strncpy(local_country, p, MAX_LEN_COUNTRY);
+                        strncpy(local_country, p, MAX_LEN_COUNTRY+1);
                     }
                 }
             }
@@ -277,10 +277,18 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
                         if (noCaseComp(p, "private-address-"))
                         {
                             strncpy(local_netname, "INTRANET", MAX_LEN_NETNAME);
+                            if (strlen("INTRANET") >= MAX_LEN_NETNAME)
+                            {
+                                local_netname[MAX_LEN_NETNAME+1] = '\0';
+                            }
                         }
                         else
                         {
                             strncpy(local_netname, p, MAX_LEN_NETNAME);
+                            if (strlen(p) >= MAX_LEN_NETNAME)
+                            {
+                                local_netname[MAX_LEN_NETNAME+1] = '\0';
+                            }
                         }
                     }
                 }
@@ -463,6 +471,10 @@ void updateWhoisInfo(struct node_shared_sorted_list *node, uint32_t address, cha
         requestWriteNode_shared_sorted_list(node);
         strcpy(country, local_country);
         strncpy(netname, local_netname, MAX_VISIBLE_NETNAME);
+        if (strlen(local_netname) >= MAX_VISIBLE_NETNAME)
+        {
+            netname[MAX_VISIBLE_NETNAME+1] = '\0';
+        }
         leaveWriteNode_shared_sorted_list(node);
         requestReadNode_shared_sorted_list(node);
     }
