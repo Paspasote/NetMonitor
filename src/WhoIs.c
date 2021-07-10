@@ -10,7 +10,11 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <netdb.h>
+#include <arpa/inet.h>
 
+
+#include <misc.h>
 #include <GlobalVars.h>
 #include <Configuration.h>
 #include <SharedSortedList.h>
@@ -168,6 +172,8 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
     char delim1[2] = ":";
     char delim2[3] = " \t";
     char *p;
+    in_addr_t address;
+    u_int8_t mask_byte;
 #ifdef DEBUG
     FILE *f;
 #endif
@@ -216,33 +222,18 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
                 p = strtok(line, delim1);
                 p = strtok(NULL, delim1);
                 if (p != NULL) {
-                    // Got it! Get initial address
-                    p = strtok(p, delim2);
-                    if (p != NULL) {
-                        // Got it! Save initial address
-                        strncpy(s_initial_addr, p, INET_ADDRSTRLEN);
-                    }
-                    // Get - char
-                    p = strtok(NULL, delim2);
-                    if (p != NULL && !strcmp(p, "-"))
+                    // Range address ?
+                    if (!checkRangeAddress(p, s_initial_addr, s_final_addr))
                     {
-                        // Got it! Get final address
-                        p = strtok(NULL, delim2);
-                        if (p != NULL)
-                        {
-                            // Got it! Save final address
-                            strncpy(s_final_addr, p, INET_ADDRSTRLEN);
-                        }
-                        else 
-                        {
-                            // Bad range address. Reset initial address
-                            strcpy(s_initial_addr, "");
-                        }
-                    }
-                    else 
-                    {
-                        // Bad range address. Reset initial address
+                        // Reset addresses
                         strcpy(s_initial_addr, "");
+                        strcpy(s_final_addr, "");
+
+                        // Address/Mask ?
+                        if (checkPairIPMask(p, &address, &mask_byte, NULL))
+                        {
+                            addressMask2Range(address, mask_byte, s_initial_addr, s_final_addr);
+                        }
                     }
                 }                
             }
@@ -259,6 +250,10 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
                     if (p != NULL) {
                         // Got it! Save country code
                         strncpy(local_country, p, MAX_LEN_COUNTRY+1);
+                        if (strlen(p) >= MAX_LEN_COUNTRY)
+                        {
+                            local_country[MAX_LEN_COUNTRY] = '\0';
+                        }
                     }
                 }
             }
@@ -279,7 +274,7 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
                             strncpy(local_netname, "INTRANET", MAX_LEN_NETNAME);
                             if (strlen("INTRANET") >= MAX_LEN_NETNAME)
                             {
-                                local_netname[MAX_LEN_NETNAME+1] = '\0';
+                                local_netname[MAX_LEN_NETNAME] = '\0';
                             }
                         }
                         else
@@ -287,8 +282,28 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
                             strncpy(local_netname, p, MAX_LEN_NETNAME);
                             if (strlen(p) >= MAX_LEN_NETNAME)
                             {
-                                local_netname[MAX_LEN_NETNAME+1] = '\0';
+                                local_netname[MAX_LEN_NETNAME] = '\0';
                             }
+                        }
+                    }
+                }
+            }
+
+           // Line beggining with owner: ?
+            if (noCaseComp(line, "owner:") && !strcmp(local_netname, ""))
+            {
+                // Yes. Get string after netname:
+                p = strtok(line, delim1);
+                p = strtok(NULL, delim1);
+                if (p != NULL) {
+                    // Got it! Get owner name
+                    p = strtok(p, delim2);
+                    if (p != NULL) {
+                        // Got it! Save owner name
+                        strncpy(local_netname, p, MAX_LEN_NETNAME);
+                        if (strlen(p) >= MAX_LEN_NETNAME)
+                        {
+                            local_netname[MAX_LEN_NETNAME] = '\0';
                         }
                     }
                 }
@@ -330,7 +345,7 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
 #endif
 
     // Did we got any info?
-    if (!strcmp(local_country, "") && !strcmp(local_netname, ""))
+    if (!strcmp(local_netname, ""))
     {
 #ifdef DEBUG
         cont_fallos1++;
@@ -439,7 +454,7 @@ struct t_value * findAdressWhois(uint32_t ip_address)
     return NULL;
 }
 
-void updateWhoisInfo(struct node_shared_sorted_list *node, uint32_t address, char *country, char *netname)
+void updateWhoisInfo(uint32_t address, char *country, char *netname)
 {
 	struct t_value *info_whois;
 	pthread_t thread_whois;
@@ -467,16 +482,12 @@ void updateWhoisInfo(struct node_shared_sorted_list *node, uint32_t address, cha
             perror("updateWhoisInfo: sem_post with w_globvars.mutex_bd_whois");
             exit(1);
         }
-        leaveReadNode_shared_sorted_list(node);
-        requestWriteNode_shared_sorted_list(node);
         strcpy(country, local_country);
         strncpy(netname, local_netname, MAX_VISIBLE_NETNAME);
         if (strlen(local_netname) >= MAX_VISIBLE_NETNAME)
         {
-            netname[MAX_VISIBLE_NETNAME+1] = '\0';
+            netname[MAX_VISIBLE_NETNAME] = '\0';
         }
-        leaveWriteNode_shared_sorted_list(node);
-        requestReadNode_shared_sorted_list(node);
     }
     else
     {

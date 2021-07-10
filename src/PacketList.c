@@ -3,7 +3,10 @@
 #include <semaphore.h>
 #include <arpa/inet.h>
 
+#include <DoubleList.h>
 #include <GlobalVars.h>
+#include <debug.h>
+
 #include <PacketList.h>
 
 // EXTERNAL Global vars
@@ -13,107 +16,179 @@ extern struct write_global_vars w_globvars;
 // Global vars
 
 // Function prototypes
-void init(list *l);
-void clear_all(list l);
-int isEmpty(list l);
-void insert_front(list l, struct info_packet data);
-void insert_tail(list l, struct info_packet data);
-void remove_front(list l);
-void remove_tail(list l);
-struct info_packet * front(list l);
-struct info_packet * tail(list l);
-unsigned size(list l);
+void PL_show_packet(struct info_packet *packet);
 
-void addPacket(const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
-	const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header) {
-
-	struct info_packet info; /* Store all info packet */
+void PL_addPacket(int internet, const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
+	const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header, unsigned n_bytes) {
+	
+	double_list *list;
+	sem_t *mutex;
+	struct info_packet *info;
 	int i;
 
-	// Check if buffer list has been created
-	if (w_globvars.buffer_packets == NULL) {
-		if (sem_wait(&w_globvars.mutex_packages_list)) 
-		{
-			perror("addPacket (PacketList): sem_wait with mutex_packages_list");
-			exit(1);
-		}
-		init(&w_globvars.buffer_packets);
-		if (sem_post(&w_globvars.mutex_packages_list))
-		{
-			perror("addPacket (PacketList): sem_post with mutex_packages_list");
-			exit(1);		
-		}
+	if (internet) 
+	{
+		list = &w_globvars.internet_packets_buffer;
+		mutex = &w_globvars.mutex_internet_packets;
+	}
+	else
+	{
+		list = &w_globvars.intranet_packets_buffer;
+		mutex = &w_globvars.mutex_intranet_packets;
 	}
 
-	// List is valid?
-	if (w_globvars.buffer_packets == NULL) 
+	// Check if buffer packages list has been created
+	if (sem_wait(mutex)) 
 	{
-		fprintf(stderr,"addPacket (PacketList): List is not valid!!\n");
+		perror("PL_addPacket: sem_wait with mutex packages buffer");
 		exit(1);
+	}
+	if (*list == NULL)
+	{
+		init_double_list(list);
+	}
+	if (sem_post(mutex))
+	{
+		perror("PL_addPacket: sem_post with mutex packages buffer");
+		exit(1);		
+	}
+
+	// Maximum size??
+	if (sem_wait(mutex)) 
+	{
+		perror("PL_addPacket: sem_wait with mutex packages buffer");
+		exit(1);
+	}
+	if (size_double_list(*list) == MAX_PACKAGES)
+	{
+		if (sem_post(mutex)) 
+		{
+			perror("PL_addPacket: sem_post with mutex packages buffer");
+			exit(1);
+		}
+		//fprintf(stderr, "PL_addPacket: Buffer overflow!!!!!\n");
+		//exit(1);
+		return;
+	}
+	if (sem_post(mutex))
+	{
+		perror("PL_addPacket: sem_post with mutex packages buffer");
+		exit(1);		
+	}
+	
+	// Allocate memory for package info
+	info = (struct info_packet *)malloc(sizeof(struct info_packet));
+	if (info == NULL)
+	{
+		fprintf(stderr,"PL_addPacket: Could not allocate memory!!\n");
+		exit(1);				
 	}
 
 	// Store current time
-	info.time = time(NULL);
+	info->time = time(NULL);
+
+	// Store packet size in bytes
+	info->n_bytes = n_bytes;
 
 	// Store ethernet addresses
 	for (i=0; i<ETH_ALEN; i++)
 	{
-		info.ether_dhost[i] = ethernet->ether_dhost[i];
-		info.ether_shost[i] = ethernet->ether_shost[i];
+		info->ether_dhost[i] = ethernet->ether_dhost[i];
+		info->ether_shost[i] = ethernet->ether_shost[i];
 	}
 
 	// Store IP Protocol
-	info.ip_protocol = ip->ip_p;
+	info->ip_protocol = ip->ip_p;
 
 	// Store Source and Destination IP address
-	info.ip_src = ip->ip_src;
-	info.ip_dst = ip->ip_dst;
+	info->ip_src = ip->ip_src;
+	info->ip_dst = ip->ip_dst;
 
 	// Protocol?
 	switch (ip->ip_p) {
 		case IPPROTO_ICMP:
 			// Store ICMP type and code
-			info.shared_header.icmp_header.type = icmp_header->icmp_type;
-			info.shared_header.icmp_header.code = icmp_header->icmp_code;
+			info->shared_header.icmp_header.type = icmp_header->icmp_type;
+			info->shared_header.icmp_header.code = icmp_header->icmp_code;
 			break;
 		case IPPROTO_TCP:
 			// Store source and destination port, TCP Seq, TCP ACK and TCP flags
-			info.shared_header.tcp_header.sport = ntohs(tcp_header->th_sport);
-			info.shared_header.tcp_header.dport = ntohs(tcp_header->th_dport);
-			info.shared_header.tcp_header.seq = ntohl(tcp_header->th_seq);
-			info.shared_header.tcp_header.ack = ntohl(tcp_header->th_ack);
-			info.shared_header.tcp_header.flags = tcp_header->th_flags;
+			info->shared_header.tcp_header.sport = ntohs(tcp_header->th_sport);
+			info->shared_header.tcp_header.dport = ntohs(tcp_header->th_dport);
+			info->shared_header.tcp_header.seq = ntohl(tcp_header->th_seq);
+			info->shared_header.tcp_header.ack = ntohl(tcp_header->th_ack);
+			info->shared_header.tcp_header.flags = tcp_header->th_flags;
 			break;
 		case IPPROTO_UDP:
 			// Store source and destination port
-			info.shared_header.udp_header.sport = ntohs(udp_header->uh_sport);
-			info.shared_header.udp_header.dport = ntohs(udp_header->uh_dport);
+			info->shared_header.udp_header.sport = ntohs(udp_header->uh_sport);
+			info->shared_header.udp_header.dport = ntohs(udp_header->uh_dport);
 			break;
 		case IPPROTO_IGMP:
 			// Store IGMP type and code and IGMP group address
-			info.shared_header.igmp_header.type = igmp_header->igmp_type;
-			info.shared_header.igmp_header.code = igmp_header->igmp_code;
-			info.shared_header.igmp_header.group = igmp_header->igmp_group;
+			info->shared_header.igmp_header.type = igmp_header->igmp_type;
+			info->shared_header.igmp_header.code = igmp_header->igmp_code;
+			info->shared_header.igmp_header.group = igmp_header->igmp_group;
 			break;
 	}
 
 	// Store the current packet in packet buffer
-	if (sem_wait(&w_globvars.mutex_packages_list)) 
+	if (sem_wait(mutex))
 	{
-		perror("addPacket (PacketList): sem_wait with mutex_packages_list");
+		perror("PL_addPacket: sem_wait with mutex packages buffer");
 		exit(1);
 	}
-	insert_tail(w_globvars.buffer_packets, info);
-	if (sem_post(&w_globvars.mutex_packages_list))
+	insert_tail_double_list(*list, info);
+	if (sem_post(mutex))
 	{
-		perror("addPacket (PacketList): sem_post with mutex_packages_list");
+		perror("PL_addPacket: sem_post with mutex packages buffer");
 		exit(1);		
 	}
 
 
 }
 
-void show_packet(struct info_packet *packet)
+struct info_packet *PL_getPacket(int internet)
+{
+	double_list *list;
+	sem_t *mutex;
+	struct info_packet *ret = NULL;
+
+	if (w_globvars.internet_packets_buffer == NULL) {
+		return NULL;
+	}
+
+	if (internet) 
+	{
+		list = &w_globvars.internet_packets_buffer;
+		mutex = &w_globvars.mutex_internet_packets;
+	}
+	else
+	{
+		list = &w_globvars.intranet_packets_buffer;
+		mutex = &w_globvars.mutex_intranet_packets;
+	}
+
+	// Any packet stored?
+	if (sem_wait(mutex)) 
+	{
+		perror("PL_getPacket: sem_wait with mutex packages buffer");
+		exit(1);
+	}
+	if (*list != NULL && !isEmpty_double_list(*list))
+	{
+		ret = front_double_list(*list);
+		remove_front_double_list(*list, 0);
+	}
+	if (sem_post(mutex))
+	{
+		perror("PL_getPacket: sem_post with mutex packages buffer");
+		exit(1);		
+	}
+	return ret;
+}
+
+void PL_show_packet(struct info_packet *packet)
 {
 	struct tm *t;
 	char s_ip_src[INET_ADDRSTRLEN], s_ip_dst[INET_ADDRSTRLEN]; /* source an ddest address (dot format) */
@@ -151,260 +226,51 @@ void show_packet(struct info_packet *packet)
 	}
 }
 
-void show_info() {
-	if (w_globvars.buffer_packets == NULL) {
+void PL_show_info(int internet) {
+	double_list *list;
+	sem_t *mutex;
+
+	if (w_globvars.internet_packets_buffer == NULL) {
 		return;
 	}
 
-	// Show one packet and remove it
-	if (sem_wait(&w_globvars.mutex_packages_list)) 
+	if (internet) 
 	{
-		perror("show_info (PacketList): sem_wait with mutex_packages_list");
-		exit(1);
+		list = &w_globvars.internet_packets_buffer;
+		mutex = &w_globvars.mutex_internet_packets;
+	}
+	else
+	{
+		list = &w_globvars.intranet_packets_buffer;
+		mutex = &w_globvars.mutex_intranet_packets;
 	}
 
-	while (!isEmpty(w_globvars.buffer_packets)) {
-		if (sem_post(&w_globvars.mutex_packages_list))
+	// Show one packet and remove it
+	if (sem_wait(mutex))
+	{
+		perror("PL_show_info: sem_wait with mutex packages buffer");
+		exit(1);
+	}
+	while (!isEmpty_double_list(*list)) {
+		if (sem_post(mutex))
 		{
-			perror("show_info (PacketList): sem_post with mutex_packages_list");
+			perror("PL_show_info: sem_post with mmutex packages buffer");
 			exit(1);		
 		}
-
-		show_packet(front(w_globvars.buffer_packets));
-		if (sem_wait(&w_globvars.mutex_packages_list)) 
+		PL_show_packet(front_double_list(*list));
+		if (sem_wait(mutex))
 		{
-			perror("show_info (PacketList): sem_wait with mutex_packages_list");
+			perror("PL_show_info: sem_wait with mutex packages buffer");
 			exit(1);
 		}
-		remove_front(w_globvars.buffer_packets);
+		remove_front_double_list(*list, 1);
 	}
 
-	if (sem_post(&w_globvars.mutex_packages_list))
+	if (sem_post(mutex))
 	{
-		perror("show_info (PacketList): sem_post with mutex_packages_list");
+		perror("PL_show_info: sem_post with mutex packages buffer");
 		exit(1);		
 	}
 
 }
 
-void init(list *l)
-{
-	if (*l != NULL) 
-	{
-		fprintf(stderr,"init: List must be NULL!!\n");
-		exit(1);
-	}
-	*l = (struct info_list *) malloc(sizeof(struct info_list));
-	if (*l == NULL)
-	{
-		fprintf(stderr,"init: Could not allocate memory!!\n");
-		exit(1);		
-	}
-	(*l)->header = NULL;
-	(*l)->tail = NULL;
-	(*l)->n_elements = 0;
-}
-
-void clear_all(list l)
-{
-	struct node *p;
-
-	if (l == NULL) 
-	{
-		fprintf(stderr,"clear_all: List is not valid!!\n");
-		exit(1);
-	}
-
-	while (l->header != NULL)
-	{
-		p = l->header;
-		l->header=p->next;
-		free(p);
-	}
-	l->tail = NULL;
-	l->n_elements = 0;
-}
-
-int isEmpty(list l)
-{
-	if (l == NULL) 
-	{
-		fprintf(stderr,"isEmpty: List is not valid!!\n");
-		exit(1);
-	}
-
-	return l->n_elements == 0;
-}
-
-void insert_front(list l, struct info_packet data)
-{
-	struct node *p = NULL;
-
-	if (l == NULL) 
-	{
-		fprintf(stderr,"insert_front: List is not valid!!\n");
-		exit(1);
-	}
-
-	p = (struct node *) malloc(sizeof(struct node));
-	if (p == NULL)
-	{
-		fprintf(stderr,"insert_front: Could not allocate memory!!\n");
-		exit(1);		
-	}
-	p->info = data;
-	p->next = l->header;
-	p->prev = NULL;
-
-	if (l->header == NULL)
-	{
-		l->tail = p;
-	}
-	else
-	{
-		l->header->prev = p;
-	}
-
-	l->header = p;
-	l->n_elements++;
-}
-
-void insert_tail(list l, struct info_packet data)
-{
-	struct node *p = NULL;
-
-	if (l == NULL) 
-	{
-		fprintf(stderr,"insert_tail: List is not valid!!\n");
-		exit(1);
-	}
-
-	p = (struct node *) malloc(sizeof(struct node));
-	if (p == NULL)
-	{
-		fprintf(stderr,"insert_tail: Could not allocate memory!!\n");
-		exit(1);		
-	}
-	p->info = data;
-	p->prev = l->tail;
-	p->next = NULL;
-
-	if (l->tail == NULL)
-	{
-		l->header = p;		
-	}
-	else
-	{
-		l->tail->next = p;		
-	}
-
-	l->tail = p;
-	l->n_elements++;
-}
-
-void remove_front(list l)
-{
-	struct node *p;
-
-	if (l == NULL) 
-	{
-		fprintf(stderr,"remove_front: List is not valid!!\n");
-		exit(1);
-	}
-
-	if (l->n_elements == 0) 
-	{
-		fprintf(stderr,"remove_front: List is empty!!\n");
-		exit(1);
-	}
-
-	p = l->header;
-	l->header = p->next;
-	if (l->header == NULL)
-	{
-		l->tail = NULL;
-	}
-	else 
-	{
-		l->header->prev = NULL;		
-	}
-	free(p);
-	l->n_elements--;
-}
-
-void remove_tail(list l) 
-{
-	struct node *p;
-
-	if (l == NULL) 
-	{
-		fprintf(stderr,"remove_tail: List is not valid!!\n");
-		exit(1);
-	}
-
-	if (l->n_elements == 0) 
-	{
-		fprintf(stderr,"remove_tail: List is empty!!\n");
-		exit(1);
-	}
-
-	p = l->tail;
-	l->tail = p->prev;
-	if (l->tail == NULL)
-	{
-		l->header = NULL;
-	}
-	else
-	{
-		l->tail->next = NULL;
-	}
-	free(p);
-	l->n_elements--;
-
-}
-
-struct info_packet * front(list l)
-{
-	if (l == NULL) 
-	{
-		fprintf(stderr,"front: List is not valid!!\n");
-		exit(1);
-	}
-
-	if (l->n_elements == 0) 
-	{
-		fprintf(stderr,"front: List is empty!!\n");
-		exit(1);
-	}
-
-	return &(l->header->info);
-}
-
-struct info_packet * tail(list l)
-{
-	if (l == NULL) 
-	{
-		fprintf(stderr,"tail: List is not valid!!\n");
-		exit(1);
-	}
-
-	if (l->n_elements == 0) 
-	{
-		fprintf(stderr,"tail: List is empty!!\n");
-		exit(1);
-	}
-
-	return &(l->tail->info);
-
-}
-
-unsigned size(list l)
-{
-	if (l == NULL) 
-	{
-		fprintf(stderr,"size: List is not valid!!\n");
-		exit(1);
-	}
-
-	return l->n_elements;
-}

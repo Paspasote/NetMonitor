@@ -7,6 +7,8 @@
 // Constants
 #define	TCP_TIMEOUT		900
 #define UDP_TIMEOUT		300
+//#define	TCP_TIMEOUT		90
+//#define UDP_TIMEOUT		90
 #define ANY_TIMEOUT 	60
 #define TCP_VISIBLE_TIMEOUT		60
 #define UDP_VISIBLE_TIMEOUT		60
@@ -22,6 +24,7 @@
 #define FLAG_NEW_POS		2
 #define FLAG_RESPOND_POS	2
 #define FLAG_STABLISHED_POS	2
+#define FLAG_NAT_POS		4
 
 #define FLAG_BAN			'B'
 #define FLAG_ACCEPT			'A'
@@ -30,6 +33,7 @@
 #define FLAG_NEW			'N'
 #define FLAG_RESPOND		'R'
 #define FLAG_STABLISHED		'S'
+#define FLAG_NAT			'I'
 
 // Function prototypes
 void Configuration();

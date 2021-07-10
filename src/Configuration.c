@@ -405,13 +405,9 @@ void processHostConfig(sorted_list *l, char *filename) {
 
 void processHostLine(sorted_list l, char *filename, char *line, unsigned n_line) {
 	char *seps = "\t ";
-	char *delim1 = "/";
-	char *delim2 = ".";
-	char *s_address, s_address_aux[100], *s_mask, *s_byte;
-	unsigned i, cont_byte, byte;
+	in_addr_t address;
+	u_int8_t mask_byte;
 	struct address_mask *info;
-	struct in_addr address_aux;
-	in_addr_t mask;
 	 
 
 	line = ltrim(line, NULL);
@@ -435,69 +431,13 @@ void processHostLine(sorted_list l, char *filename, char *line, unsigned n_line)
 	}
 
 	// Extract Address
-	s_address = strtok(line, delim1);
+	if (!checkPairIPMask(line, &address, &mask_byte, NULL))
+	{
+		fprintf(stderr, "Bad config file (%s) at line %u: Bad IP address (%s)\n", filename, n_line, line);
+		exit(1);
 
-	// Mask?
-	s_mask = strtok(NULL, delim1);
-	if (s_mask != NULL) {
-		// More tokens ?
-		if (strtok(NULL, delim1) != NULL) {
-			fprintf(stderr, "Bad config file (%s) at line %u: Bad IP address (%s)\n", filename, n_line, line);
-			exit(1);
-		}
 	}
-
-	// Check address format
-	strcpy(s_address_aux, s_address);
-	cont_byte = 0;
-	s_byte = strtok(s_address_aux, delim2);
-	while (s_byte != NULL && cont_byte < 4) {
-		cont_byte++;
-		for (i=0; i<strlen(s_byte); i++) {
-			if (!isdigit(s_byte[i])) {
-				fprintf(stderr, "Bad config file (%s) at line %u: Bad IP address (%s)\n", filename, n_line, s_address);
-				exit(1);		
-			}
-		}
-		if (sscanf(s_byte, "%u", &byte) != 1 || byte > 255) {
-			fprintf(stderr, "Bad config file (%s) at line %u: Bad IP address (%s)\n", filename, n_line, s_address);
-			exit(1);		
-		}
-		s_byte = strtok(NULL, delim2);
-	}
-	if (s_byte != NULL || cont_byte != 4) {
-		fprintf(stderr, "Bad config file (%s) at line %u: Bad IP address (%s)\n", filename, n_line, s_address);
-		exit(1);		
-	}
-	if (s_address[strlen(s_address)-1] == '.') {
-		fprintf(stderr, "Bad config file (%s) at line %u: Bad IP address (%s)\n", filename, n_line, s_address);
-		exit(1);		
-	}
-
-	// Check mask
-	if (s_mask != NULL) {
-		for (i=0; i<strlen(s_mask); i++) {
-			if (!isdigit(s_mask[i])) {
-				fprintf(stderr, "Bad config file (%s) at line %u: Bad Mask address (%s)\n", filename, n_line, s_mask);
-				exit(1);		
-			}
-		}
-		if (sscanf(s_mask, "%u", &byte) != 1 || byte > 32) {
-			fprintf(stderr, "Bad config file (%s) at line %u: Bad Mask address (%s)\n", filename, n_line, s_mask);
-			exit(1);		
-		}
-		if (byte != 32) {
-			// Check network address. Host part of the address must be zero
-			inet_pton(AF_INET, s_address, &address_aux);
-			mask = 0xFFFFFFFF;
-			mask = mask >> byte;
-			if (ntohl(address_aux.s_addr) & mask) {
-				fprintf(stderr, "Bad config file (%s) at line %u: Bad network address (%s/%s)\n", filename, n_line, s_address, s_mask);
-				exit(1);		
-			}
-		}
-	}
-
+	
 	// Save address/mask
 	info = (struct address_mask *) malloc(sizeof(struct address_mask));
 	if (info == NULL)
@@ -508,13 +448,8 @@ void processHostLine(sorted_list l, char *filename, char *line, unsigned n_line)
 #ifdef DEBUG
 	w_globvars.allocated_config += sizeof(struct address_mask);
 #endif
-	inet_pton(AF_INET, s_address, &info->address);
-	if (s_mask != NULL) {
-		info->mask = byte;
-	}
-	else {
-		info->mask = 32;
-	}
+	info->mask = mask_byte;
+	info->address.s_addr = address;
 	insert_sorted_list(l, info);
 #ifdef DEBUG
 	w_globvars.allocated_config += sizeof(struct node_sorted_list);

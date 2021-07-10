@@ -30,7 +30,7 @@ void *whoIs(void *ptr_paramt);
 void readDatabaseWhois();
 void writeDatabaseWhois();
 struct t_value * findAdressWhois(uint32_t ip_address);
-void updateWhoisInfo(struct node_shared_sorted_list *node, uint32_t address, char *country, char *netname);
+void updateWhoisInfo(uint32_t address, char *country, char *netname);
 void showDatabase(int first_register, int max_registers);
 int numberOfWhoisRegisters();
 

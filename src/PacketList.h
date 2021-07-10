@@ -11,11 +11,14 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-// Global vars
+// Constants
+#define	MAX_PACKAGES 100000
 
 struct info_packet 
 {
-	time_t	time;
+	time_t	time;						/* Time of this package */
+
+	unsigned n_bytes;					/* Size of this package */
 
 	uint8_t  ether_dhost[ETH_ALEN];		/* destination eth addr */
   	uint8_t  ether_shost[ETH_ALEN];		/* source ether addr    */
@@ -52,23 +55,11 @@ struct info_packet
 	} shared_header;
 };
 
-struct node 
-{
-	struct info_packet info;
-	struct node *next;
-	struct node *prev;
-};
-
-typedef struct info_list {
-	struct node *header;
-	struct node *tail;
-	unsigned n_elements;
-} *list;
-
 // Function prototypes
-void addPacket(const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
-			   const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header);
-void show_info();
+void PL_addPacket(int internet, const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
+			   const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header, unsigned n_bytes );
+struct info_packet *PL_getPacket(int internet);
+void PL_show_info(int internet);
 
 
 #endif

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 
 #include <misc.h>
 
@@ -52,6 +53,176 @@ char *rtrim(char *str, const char *seps)
         i--;
     }
     return str;
+}
+
+int checkIPAddress(char *s_ip, in_addr_t *address)
+{
+	char *delim = ".";
+    char s_ip_aux[INET_ADDRSTRLEN];
+    char *s_byte;
+	unsigned i, byte, cont_byte;
+
+   	// Check address format
+    if (strlen(s_ip) > INET_ADDRSTRLEN-1)
+    {
+        return 0;
+    }
+
+	strcpy(s_ip_aux, s_ip);
+	cont_byte = 0;
+	s_byte = strtok(s_ip_aux, delim);
+	while (s_byte != NULL && cont_byte < 4) {
+		cont_byte++;
+		for (i=0; i<strlen(s_byte); i++) {
+			if (!isdigit(s_byte[i])) {
+                return 0;
+			}
+		}
+		if (sscanf(s_byte, "%u", &byte) != 1 || byte > 255) {
+            return 0;
+		}
+		s_byte = strtok(NULL, delim);
+	}
+	if (s_byte != NULL || cont_byte != 4) {
+        return 0;
+	}
+	if (s_ip[strlen(s_ip)-1] == '.') {
+        return 0;
+	}
+
+    if (address != NULL)
+    {
+       	inet_pton(AF_INET, s_ip, address);
+    }
+    return 1;
+}
+
+int checkPairIPMask(char *s_pair, in_addr_t *address, u_int8_t *mask_byte, in_addr_t *mask)
+{
+   	char *delim = "/";
+	char *s_address, *s_mask;
+	unsigned i, byte;
+	in_addr_t address_aux, mask_aux;
+	 
+
+	// Extract Address
+	s_address = strtok(s_pair, delim);
+
+	// Mask?
+	s_mask = strtok(NULL, delim);
+	if (s_mask != NULL) {
+		// More tokens ?
+		if (strtok(NULL, delim) != NULL) {
+            return 0;
+		}
+	}
+
+    // Get IP address
+    if (!checkIPAddress(s_address, address))
+    {
+        return 0;
+    }
+
+	// Check mask    
+	if (s_mask != NULL) {
+		for (i=0; i<strlen(s_mask); i++) {
+			if (!isdigit(s_mask[i])) {
+                return 0;
+			}
+		}
+		if (sscanf(s_mask, "%u", &byte) != 1 || byte > 32) {
+            return 0;
+		}
+		if (byte != 32) {
+			// Check network address. Host part of the address must be zero
+			inet_pton(AF_INET, s_address, &address_aux);
+			mask_aux = 0xFFFFFFFF;
+			mask_aux = mask_aux << byte;
+			if (address_aux & mask_aux) 
+            {
+                return 0;
+			}
+		}
+        if (mask_byte != NULL)
+        {
+            *mask_byte = byte;
+        }
+        if (mask != NULL)
+        {
+            *mask = 0xFFFFFFFF;
+            *mask = *mask << byte;
+        }
+	}
+    else
+    {
+        if (mask_byte != NULL)
+        {
+            *mask_byte = 32;
+        }
+        if (mask != NULL)
+        {
+            *mask = 0xFFFFFFFF;
+        }
+    }
+
+    return 1;
+}
+
+int checkRangeAddress(char *range, char *begin, char *end)
+{
+    char *p;
+    char delim[3] = " \t";
+
+    // Get initial address
+    p = strtok(range, delim);
+    if (p == NULL)
+    {
+        return 0;
+    }
+    // Got it! Save initial address
+    strncpy(begin, p, INET_ADDRSTRLEN);
+    if (strlen(p) >= INET_ADDRSTRLEN)
+    {
+        begin[INET_ADDRSTRLEN] = '\0';
+    }
+
+    // Get - char
+    p = strtok(NULL, delim);
+    if (p == NULL || strcmp(p, "-"))
+    {
+        return 0;
+    }
+
+    // Got it! Get final address
+    p = strtok(NULL, delim);
+    if (p == NULL)
+    {
+        return 0;
+    }
+    // Got it! Save final address
+    strncpy(end, p, INET_ADDRSTRLEN);
+    if (strlen(p) > INET_ADDRSTRLEN)
+    {
+        end[INET_ADDRSTRLEN] = '\0';
+    }
+
+    return 1;
+}
+
+void addressMask2Range(in_addr_t address, u_int8_t mask_byte, char *s_initial_addr, char *s_final_addr)
+{
+    in_addr_t final_address, mask_aux;
+
+    // Convert initial address
+    inet_ntop(AF_INET, &address, s_initial_addr, INET_ADDRSTRLEN);
+
+    // Calculate end address
+	mask_aux = 0xFFFFFFFF;
+    mask_aux = mask_aux >> mask_byte;
+    final_address = address | mask_aux;
+
+    // Convert end address
+    inet_ntop(AF_INET, &final_address, s_final_addr, INET_ADDRSTRLEN);
 }
 
 void s_icmp_type(uint8_t type, uint8_t code, char *buffer)

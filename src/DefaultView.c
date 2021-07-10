@@ -10,9 +10,11 @@
 
 
 #include <SharedSortedList.h>
+#include <SortedList.h>
 #include <GlobalVars.h>
 #include <misc.h>
 #include <Configuration.h>
+#include <Connection.h>
 #include <WhoIs.h>
 #include <iptables.h>
 #include <interface.h>
@@ -31,123 +33,121 @@ extern struct write_global_vars w_globvars;
 // Function prototypes
 int DV_isValidList();
 void DV_createList();
-int DV_isValidList_outbound();
-void DV_createList_outbound();
+int DV_isValidConnList(shared_sorted_list list, sem_t mutex);
 
-void DV_ShowElement(struct node_shared_sorted_list *node, void *param);
-void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header,const struct udphdr *udp_header);
-void DV_updateBandwidth(struct DV_info *info, time_t now);
-void DV_accumulateBytes(void *val, void *total);
-void DV_freeLastConnections(void *val, void *param);
-void DV_Purge_outbound();
+void DV_updateList();
+void DV_freeRequests(struct DV_info *info, shared_sorted_list conn_list, struct node_shared_sorted_list *conn_node, int leave_read);
+void DV_ShowElement(void *data, void *param);
 
-int DV_Equals(void *val1, void *val2);
-int DV_Reverse(void *val1, void *val2);
+void DV_Reset();
 int DV_Compare(void *val1, void *val2);
-int DV_Compare_outbound(void *val1, void *val2);
 
 int DV_isValidList() {
-	int ret;
-
-	if (sem_wait(&w_globvars.mutex_packages_list)) 
-	{
-		perror("DV_isValidList: sem_wait with mutex_packages_list");
-		exit(1);
-	}
-	ret = w_globvars.DV_l != NULL;
-	if (sem_post(&w_globvars.mutex_packages_list))
-	{
-		perror("DV_isValidList: sem_post with mutex_packages_list");
-		exit(1);		
-	}
-
-	return ret;
+	return w_globvars.DV_l != NULL;
 }
 
 void DV_createList() {
-	if (sem_wait(&w_globvars.mutex_packages_list)) 
-	{
-		perror("DV_createList: sem_wait with mutex_packages_list");
-		exit(1);
-	}
-	init_shared_sorted_list(&w_globvars.DV_l, DV_Compare);
-	if (sem_post(&w_globvars.mutex_packages_list))
-	{
-		perror("DV_createList: sem_post with mutex_packages_list");
-		exit(1);		
-	}
-#ifdef DEBUG
-	if (sem_wait(&w_globvars.mutex_am)) 
-	{
-		perror("DV_createList: sem_wait with mutex_am");
-		exit(1);
-	}
-	w_globvars.allocated_packets_inbound += sizeof(struct info_shared_sorted_list);
-	if (sem_post(&w_globvars.mutex_am))
-	{
-		perror("DV_createList: sem_post with mutex_am");
-		exit(1);		
-	}
-#endif
+	init_sorted_list(&w_globvars.DV_l, DV_Compare);
 }
 
-int DV_isValidList_outbound() {
+int DV_isValidConnList(shared_sorted_list list, sem_t mutex) 
+{
 	int ret;
 
-	if (sem_wait(&w_globvars.mutex_outbound_list)) 
+	if (sem_wait(&mutex)) 
 	{
-		perror("DV_isValidList_outbound: sem_wait with mutex_outbound_list");
+		perror("DV_isValidConnList: sem_wait with mutex list");
 		exit(1);
 	}
-	ret = w_globvars.DV_l_outbound != NULL;
-	if (sem_post(&w_globvars.mutex_outbound_list))
+	ret = list != NULL;
+	if (sem_post(&mutex))
 	{
-		perror("DV_isValidList_outbound: sem_post with mutex_outbound_list");
+		perror("DV_isValidConnList: sem_post with mutex list");
 		exit(1);		
 	}
 
 	return ret;
 }
 
-void DV_createList_outbound() {
-	if (sem_wait(&w_globvars.mutex_outbound_list)) 
+void DV_updateList()
+{
+    shared_sorted_list *hash_table;
+	sem_t *mutex;
+	int i;
+	struct node_shared_sorted_list *node;
+	struct DV_info *info;
+
+	if (!isEmpty_sorted_list(w_globvars.DV_l))
 	{
-		perror("DV_createList_outbound: sem_wait with mutex_outbound_list");
-		exit(1);
+		DV_Reset();
 	}
-	init_shared_sorted_list(&w_globvars.DV_l_outbound, DV_Compare_outbound);
-	if (sem_post(&w_globvars.mutex_outbound_list))
+
+    // Iterate buckets of incoming internet hash table
+	hash_table = w_globvars.conn_internet_in;
+	mutex = &w_globvars.mutex_conn_internet_in;
+    for (i=0; i<65536; i++)
+    {
+        // Is list valid?
+        if (DV_isValidConnList(hash_table[i], *mutex))
+        {
+            // Iterate the bucket's list 
+            node = firstNode_shared_sorted_list(hash_table[i]);
+            while (node != NULL) 
+			{
+				// Allocate memory for this connection
+				info = (struct DV_info *) malloc(sizeof(struct DV_info));
+				if (info == NULL) 
+				{
+					fprintf(stderr,"DV_updateList: Could not allocate memory!!\n");
+					exit(1);				
+				}
+
+                // Save the connection info
+				info->conn_node = node;
+				info->conn_list = hash_table[i];
+				strcpy(info->country, "");
+				strcpy(info->netname, "");
+				strcpy(info->flags, "?    ");
+				info->iptable_rule = 0;
+				info->stablished = 0;
+
+				// Insert the new connection in the list
+				insert_sorted_list(w_globvars.DV_l, info);
+
+				// Next node
+				// We don't leave node's access because node view is pointing to this node connection
+				node = nextNode_shared_sorted_list(hash_table[i], node, 0);
+            }
+        }
+    }
+}
+
+void DV_freeRequests(struct DV_info *info, shared_sorted_list conn_list, struct node_shared_sorted_list *conn_node, int leave_read)
+{
+	if (leave_read)
 	{
-		perror("DV_createList_outbound: sem_post with mutex_outbound_list");
-		exit(1);		
+		leaveReadNode_shared_sorted_list(conn_node);
 	}
-#ifdef DEBUG
-	if (sem_wait(&w_globvars.mutex_am)) 
+	info->conn_list = NULL;
+	info->conn_node = NULL;
+	leaveNode_shared_sorted_list(conn_list, conn_node);
+
+#if DEBUG > 1
+	/***************************  DEBUG ****************************/
 	{
-		perror("DV_createList_outbound: sem_wait with mutex_am");
-		exit(1);
-	}
-	w_globvars.allocated_packets_outbound += sizeof(struct info_shared_sorted_list);
-	if (sem_post(&w_globvars.mutex_am))
-	{
-		perror("DV_createList_outbound: sem_post with mutex_am");
-		exit(1);		
+		char m[255];
+
+		sprintf(m, "Interface: ShowElement finished                                                          ");
+		debugMessageXY(INTERFACE_THREAD_ROW, INTERFACE_THREAD_COL, m, NULL, 1);
 	}
 #endif
+
 }
 
-void DV_Reset() {
-	if (DV_isValidList())
-	{
-		clear_all_shared_sorted_list(w_globvars.DV_l, 1, DV_freeLastConnections, NULL);
-	}
-	if (DV_isValidList_outbound()) {
-		clear_all_shared_sorted_list(w_globvars.DV_l_outbound, 1, NULL, NULL);
-	}
-}
-
-void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
+void DV_ShowElement(void *data, void *param) 
+{
 	struct DV_info *info;
+	struct connection_info *conn;
 	struct tm *t;
 	time_t now;
 	char s_time[20];
@@ -159,44 +159,89 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 	char total_bytes[20];
 	char *service_alias;
 	char s_port[9];
+	struct node_shared_sorted_list *conn_node;
+	shared_sorted_list conn_list;
 
-	info = (struct DV_info *)node->info;
+#if DEBUG > 1
+	/***************************  DEBUG ****************************/
+	{
+		char m[255];
 
-	requestReadNode_shared_sorted_list(node);
-	if (info->response) {
-		// Do not show response connections
-		leaveReadNode_shared_sorted_list(node);
+		sprintf(m, "Interface: ShowElement start...                                                          ");
+		debugMessageXY(INTERFACE_THREAD_ROW, INTERFACE_THREAD_COL, m, NULL, 1);
+	}
+#endif
+
+	info = (struct DV_info *)data;
+	conn_node = info->conn_node;
+	conn_list = info->conn_list;
+
+#if DEBUG > 1
+	/***************************  DEBUG ****************************/
+	{
+		char m[255];
+
+		sprintf(m, "Interface: ShowElement before request read access to connection node...                  ");
+		debugMessageXY(INTERFACE_THREAD_ROW, INTERFACE_THREAD_COL, m, NULL, 1);
+	}
+#endif
+
+	// Read access to connection node
+	if (!requestReadNode_shared_sorted_list(conn_node))
+	{
+#ifdef DEBUG
+		// This should never happen
+		fprintf(stderr, "DV_ShowElement: Connection pointed by node view was removed!!");
+		exit(EXIT_FAILURE);
+#endif
+		DV_freeRequests(info, conn_list, conn_node, 0);
 		return;
 	}
+	conn = (struct connection_info *)info->conn_node->info;
+
+	if (!conn->starting) {
+		DV_freeRequests(info, conn_list, conn_node, 1);
+		return;
+	}	
+
+#if DEBUG > 1
+	/***************************  DEBUG ****************************/
+	{
+		char m[255];
+
+		sprintf(m, "Interface: ShowElement after request read access to connection node...                   ");
+		debugMessageXY(INTERFACE_THREAD_ROW, INTERFACE_THREAD_COL, m, NULL, 1);
+	}
+#endif
 
 	now = time(NULL);
 
-	t = localtime(&info->time);
+	t = localtime(&conn->time);
 	sprintf(s_time, "%02d/%02d/%4d %02d:%02d:%02d", t->tm_mday, t->tm_mon, 1900+t->tm_year, t->tm_hour, t->tm_min, t->tm_sec);
 
-	inet_ntop(AF_INET, &(info->ip_src), s_ip_src, INET_ADDRSTRLEN);
-	inet_ntop(AF_INET, &(info->ip_dst), s_ip_dst, INET_ADDRSTRLEN);
+	inet_ntop(AF_INET, &(conn->ip_src), s_ip_src, INET_ADDRSTRLEN);
+	inet_ntop(AF_INET, &(conn->ip_dst), s_ip_dst, INET_ADDRSTRLEN);
 
-	if ((float)info->total_bytes / 1024.0 > 99999.99) {
-		sprintf(total_bytes, "[%8.2f MB]", (float)info->total_bytes / (1024.0*1024.0));
+	if ((float)conn->total_bytes / 1024.0 > 99999.99) {
+		sprintf(total_bytes, "[%8.2f MB]", (float)conn->total_bytes / (1024.0*1024.0));
 	}
 	else {
-		sprintf(total_bytes, "[%8.2f KB]", (float)info->total_bytes / 1024.0);
+		sprintf(total_bytes, "[%8.2f KB]", (float)conn->total_bytes / 1024.0);
 	}
 
 	// Protocol?
-	switch (info->ip_protocol) {
+	switch (conn->ip_protocol) {
 		case IPPROTO_ICMP:
-			if (now - info->time >= ANY_VISIBLE_TIMEOUT) {
+			if (now - conn->time >= ANY_VISIBLE_TIMEOUT) {
 				// Visibility timeout
-				leaveReadNode_shared_sorted_list(node);
+				DV_freeRequests(info, conn_list, conn_node, 1);
 				return;
 			}
 
-			// Check if we have to update whois info
+			// Check if we have to update whois conn
 			if (!strcmp(info->country, ""))
 			{
-				updateWhoisInfo(node, info->ip_src.s_addr, info->country, info->netname);
+				updateWhoisInfo(conn->ip_src.s_addr, info->country, info->netname);
 			}
 			// Check if we have to update iptables flag
 			if (now - info->iptable_rule > RULE_TIMEOUT)
@@ -204,11 +249,17 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 				// Mark iptable rule as old
 				info->flags[FLAG_IPTABLES_POS] = '?';
 			}
+			if (info->stablished != conn->stablished)
+			{
+				info->stablished = conn->stablished;
+				// Mark iptable rule as old
+				info->flags[FLAG_IPTABLES_POS] = '?';
+			}
 			if (info->flags[FLAG_IPTABLES_POS] == '?')
 			{
 				info->iptable_rule = now;
-				switch (actionIncoming(c_globvars.internet_dev, info->ip_protocol, info->ip_src.s_addr, 0, 
-									   info->ip_dst.s_addr, 0, info->shared_info.icmp_info.type, info->shared_info.icmp_info.code, !info->stablished, "INPUT"))
+				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, conn->ip_src.s_addr, 0, 
+									   conn->ip_dst.s_addr, 0, conn->shared_info.icmp_info.type, conn->shared_info.icmp_info.code, !conn->stablished, "INPUT"))
 				{
 					case -1:
 						info->flags[FLAG_IPTABLES_POS] = ' ';
@@ -228,13 +279,13 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 				}
 			}
 			// Update Respond/Stablished flag
-			if (info->response)
+			if (!conn->starting)
 			{
 				info->flags[FLAG_RESPOND_POS] = FLAG_RESPOND;
 			}
 			else
 			{
-				if (info->stablished)
+				if (conn->stablished)
 				{
 					info->flags[FLAG_STABLISHED_POS] = FLAG_STABLISHED;
 				}
@@ -242,37 +293,52 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 				{
 					info->flags[FLAG_NEW_POS] = FLAG_NEW;
 				}
+			}
+			// Update NAT flag
+			if (conn->nat_node != NULL)
+			{
+				info->flags[FLAG_NAT_POS] = FLAG_NAT;
+			}
+			else
+			{
+				info->flags[FLAG_NAT_POS] = ' ';
 			}
 
 			// Generate line info
 			strcpy(s_protocol, "icmp");
-			s_icmp_type(info->shared_info.icmp_info.type, info->shared_info.icmp_info.code, s_icmp);
-			sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s       %-5s  %2s  %-16s  %-5s%s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, info->flags, info->country, info->netname, s_protocol, s_icmp);
+			s_icmp_type(conn->shared_info.icmp_info.type, conn->shared_info.icmp_info.code, s_icmp);
+			sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s       %-5s  %2s  %-16s  %-5s%s\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, info->flags, info->country, info->netname, s_protocol, s_icmp);
 			break;
 		case IPPROTO_TCP:
-			if (now - info->time >= TCP_VISIBLE_TIMEOUT) {
+			if (now - conn->time >= TCP_VISIBLE_TIMEOUT) {
 				// Visibility timeout
-				leaveReadNode_shared_sorted_list(node);
+				DV_freeRequests(info, conn_list, conn_node, 1);
 				return;
 			}
 
 			// Check if we have to update whois info
 			if (!strcmp(info->country, ""))
 			{
-				updateWhoisInfo(node, info->ip_src.s_addr, info->country, info->netname);
+				updateWhoisInfo(conn->ip_src.s_addr, info->country, info->netname);
 			}
 			// Check if we have to update iptables flag
 			if (now - info->iptable_rule > RULE_TIMEOUT)
 			{
+				// Mark iptable rule as old
+				info->flags[FLAG_IPTABLES_POS] = '?';
+			}
+			if (info->stablished != conn->stablished)
+			{
+				info->stablished = conn->stablished;
 				// Mark iptable rule as old
 				info->flags[FLAG_IPTABLES_POS] = '?';
 			}
 			if (info->flags[FLAG_IPTABLES_POS] == '?')
 			{
 				info->iptable_rule = now;
-				switch (actionIncoming(c_globvars.internet_dev, info->ip_protocol, info->ip_src.s_addr, info->shared_info.tcp_info.sport, 
-									   info->ip_dst.s_addr, info->shared_info.tcp_info.dport, info->shared_info.tcp_info.flags, 0,
-									   !info->stablished, "INPUT"))
+				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, conn->ip_src.s_addr, conn->shared_info.tcp_info.sport, 
+									   conn->ip_dst.s_addr, conn->shared_info.tcp_info.dport, conn->shared_info.tcp_info.flags, 0,
+									   !conn->stablished, "INPUT"))
 				{
 					case -1:
 						info->flags[FLAG_IPTABLES_POS] = ' ';
@@ -292,13 +358,13 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 				}
 			}
 			// Update Respond/Stablished flag
-			if (info->response)
+			if (!conn->starting)
 			{
 				info->flags[FLAG_RESPOND_POS] = FLAG_RESPOND;
 			}
 			else
 			{
-				if (info->stablished)
+				if (conn->stablished)
 				{
 					info->flags[FLAG_STABLISHED_POS] = FLAG_STABLISHED;
 				}
@@ -307,38 +373,47 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 					info->flags[FLAG_NEW_POS] = FLAG_NEW;
 				}
 			}
+			// Update NAT flag
+			if (conn->nat_node != NULL)
+			{
+				info->flags[FLAG_NAT_POS] = FLAG_NAT;
+			}
+			else
+			{
+				info->flags[FLAG_NAT_POS] = ' ';
+			}
 
 			// Generate line info
 			strcpy(s_protocol, "tcp");
-			sprintf(s_port, "%0u", info->shared_info.tcp_info.sport);
-			if (info->response) {
+			sprintf(s_port, "%0u", conn->shared_info.tcp_info.sport);
+/*			if (conn->response) {
 				strcat(s_port, "(R)");
-			}
-			service_alias = serviceAlias(info->ip_protocol, info->shared_info.tcp_info.dport);
+			}*/
+			service_alias = serviceAlias(conn->ip_protocol, conn->shared_info.tcp_info.dport);
 			if (service_alias != NULL && strcmp(service_alias, "")) {
-				sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, service_alias);				
+				sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, service_alias);				
 			}
 			else {
-				servinfo = getservbyport(htons(info->shared_info.tcp_info.dport), s_protocol);
+				servinfo = getservbyport(htons(conn->shared_info.tcp_info.dport), s_protocol);
 				if (servinfo != NULL && strcmp(servinfo->s_name, "")) {
-					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, servinfo->s_name);
+					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, servinfo->s_name);
 				}
 				else {
-					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %-5s%5u\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, s_protocol, info->shared_info.tcp_info.dport);				
+					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %-5s%5u\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, s_protocol, conn->shared_info.tcp_info.dport);				
 				}
 			}
 			break;
 		case IPPROTO_UDP:
-			if (now - info->time >= UDP_VISIBLE_TIMEOUT) {
+			if (now - conn->time >= UDP_VISIBLE_TIMEOUT) {
 				// Visibility timeout
-				leaveReadNode_shared_sorted_list(node);
+				DV_freeRequests(info, conn_list, conn_node, 1);
 				return;
 			}
 
 			// Check if we have to update whois info
 			if (!strcmp(info->country, ""))
 			{
-				updateWhoisInfo(node, info->ip_src.s_addr, info->country, info->netname);
+				updateWhoisInfo(conn->ip_src.s_addr, info->country, info->netname);
 			}
 			// Check if we have to update iptables flag
 			if (now - info->iptable_rule > RULE_TIMEOUT)
@@ -346,10 +421,17 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 				// Mark iptable rule as old
 				info->flags[FLAG_IPTABLES_POS] = '?';
 			}
+			if (info->stablished != conn->stablished)
+			{
+				info->stablished = conn->stablished;
+				// Mark iptable rule as old
+				info->flags[FLAG_IPTABLES_POS] = '?';
+			}
+			if (info->flags[FLAG_IPTABLES_POS] == '?')
 			{
 				info->iptable_rule = now;
-				switch (actionIncoming(c_globvars.internet_dev, info->ip_protocol, info->ip_src.s_addr, info->shared_info.udp_info.sport, 
-									   info->ip_dst.s_addr, info->shared_info.udp_info.dport, 0, 0, !info->stablished, "INPUT"))
+				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, conn->ip_src.s_addr, conn->shared_info.udp_info.sport, 
+									   conn->ip_dst.s_addr, conn->shared_info.udp_info.dport, 0, 0, !conn->stablished, "INPUT"))
 				{
 					case -1:
 						info->flags[FLAG_IPTABLES_POS] = ' ';
@@ -369,13 +451,13 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 				}
 			}
 			// Update Respond/Stablished flag
-			if (info->response)
+			if (!conn->starting)
 			{
 				info->flags[FLAG_RESPOND_POS] = FLAG_RESPOND;
 			}
 			else
 			{
-				if (info->stablished)
+				if (conn->stablished)
 				{
 					info->flags[FLAG_STABLISHED_POS] = FLAG_STABLISHED;
 				}
@@ -384,835 +466,86 @@ void DV_ShowElement(struct node_shared_sorted_list *node, void *param) {
 					info->flags[FLAG_NEW_POS] = FLAG_NEW;
 				}
 			}
+			// Update NAT flag
+			if (conn->nat_node != NULL)
+			{
+				info->flags[FLAG_NAT_POS] = FLAG_NAT;
+			}
+			else
+			{
+				info->flags[FLAG_NAT_POS] = ' ';
+			}
 
 			// Generate line info
 			strcpy(s_protocol, "udp");
-			sprintf(s_port, "%0u", info->shared_info.udp_info.sport);
-			if (info->response) {
+			sprintf(s_port, "%0u", conn->shared_info.udp_info.sport);
+/*			if (conn->response) {
 				strcat(s_port, "(R)");
-			}
-			service_alias = serviceAlias(info->ip_protocol, info->shared_info.udp_info.dport);
+			} */
+			service_alias = serviceAlias(conn->ip_protocol, conn->shared_info.udp_info.dport);
 			if (service_alias != NULL && strcmp(service_alias, "")) {
-				//sprintf(line, "%s   [%05lu] %s [%8.2f KB/s]  %22s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, src_ip_port, service_alias);				
-				sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, service_alias);				
+				//sprintf(line, "%s   [%05lu] %s [%8.2f KB/s]  %22s  %s\n", s_time, conn->hits, total_bytes, conn->bandwidth, src_ip_port, service_alias);				
+				sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, service_alias);				
 			}
 			else {
-				servinfo = getservbyport(htons(info->shared_info.udp_info.dport), s_protocol);
+				servinfo = getservbyport(htons(conn->shared_info.udp_info.dport), s_protocol);
 				if (servinfo != NULL && strcmp(servinfo->s_name, "")) {
-					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, servinfo->s_name);
+					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, servinfo->s_name);
 				}
 				else {
-					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %-5s%5u\n", s_time, info->hits, total_bytes, info->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, s_protocol, info->shared_info.udp_info.dport);				
+					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %-5s%5u\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, s_protocol, conn->shared_info.udp_info.dport);				
 				}
 			}
 			break;	
 	}
 
-	writeLineOnResult(line, COLOR_PAIR(info->priority), now - info->time <= RECENT_TIMEOUT);
-	leaveReadNode_shared_sorted_list(node);
+	writeLineOnResult(line, COLOR_PAIR(conn->priority), now - conn->time <= RECENT_TIMEOUT);
+
+	DV_freeRequests(info, conn_list, conn_node, 1);
 	w_globvars.result_count_lines++;
+
+#if DEBUG > 1
+	/***************************  DEBUG ****************************/
+	{
+		char m[255];
+
+		sprintf(m, "Interface: ShowElement finished                                                      ");
+		debugMessageXY(INTERFACE_THREAD_ROW, INTERFACE_THREAD_COL, m, NULL, 1);
+	}
+#endif
 }
 
 void DV_ShowInfo() {
-	// Is list valid?
+	// Is list created?
 	if (!DV_isValidList())
 	{
-		return;
-	}
-
-	// Iterate the list and show info on screen
-	w_globvars.result_count_lines = 0;
-	for_eachNode_shared_sorted_list(w_globvars.DV_l, DV_ShowElement, NULL);
-}
-
-void DV_addPacket(const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
-				  const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header, unsigned n_bytes, unsigned priority) {
-	time_t now;
-	struct DV_info *info, *new_info;
-	struct DV_info_outbound info_outbound;
-	struct node_shared_sorted_list *node, *node_reverse;
-	struct DV_info_bandwidth *info_bandwidth;
-	int syn;
-
-	// Protocol wanted??
-	if (ip->ip_p != IPPROTO_ICMP && ip->ip_p != IPPROTO_TCP && ip->ip_p != IPPROTO_UDP) {
-		return;
-	}
-
-	// Inbound or Outbound??
-	if (ip->ip_src.s_addr == c_globvars.own_ip_internet) {
-		// Outbound
-		DV_addPacket_outbound(ip, tcp_header, udp_header);
-		return;
-	}
-
-	now = time(NULL);
-
-	// SYN Flag ?
-	syn = ip->ip_p == IPPROTO_TCP && (tcp_header->th_flags & TH_SYN) && !(tcp_header->th_flags & TH_ACK);
-
-	// Check if buffer list has been created
-	if (!DV_isValidList()) {
 		DV_createList();
 	}
 
-	// List is valid?
-	if (!DV_isValidList()) {
-		fprintf(stderr,"DV_addPacket: List is not valid!!\n");
-		exit(1);
-	}
-
-	new_info = (struct DV_info *) malloc(sizeof(struct DV_info));
-	if (new_info == NULL) {
-		fprintf(stderr,"DV_addPacket: Could not allocate memory!!\n");
-		exit(1);				
-	}
-#ifdef DEBUG
-	if (sem_wait(&w_globvars.mutex_am)) 
-	{
-		perror("DV_addPacket: sem_wait with mutex_am");
-		exit(1);
-	}
-	w_globvars.allocated_packets_inbound += sizeof(struct DV_info);
-	if (sem_post(&w_globvars.mutex_am))
-	{
-		perror("DV_addPacket: sem_post with mutex_am");
-		exit(1);		
-	}
-#endif
-	// Store IP Protocol
-	new_info->ip_protocol = ip->ip_p;
-	info_outbound.ip_protocol = new_info->ip_protocol;
-
-	// Store Source and Destination IP address
-	new_info->ip_src = ip->ip_src;
-	new_info->ip_dst = ip->ip_dst;
-	info_outbound.ip_src = new_info->ip_dst;
-	info_outbound.ip_dst = new_info->ip_src;
-
-	// Protocol?
-	switch (ip->ip_p) {
-		case IPPROTO_ICMP:
-			// Store ICMP type and code
-			new_info->shared_info.icmp_info.type = icmp_header->icmp_type;
-			new_info->shared_info.icmp_info.code = icmp_header->icmp_code;
-			break;
-		case IPPROTO_TCP:
-			// Store source and destination port, and TCP flags
-			new_info->shared_info.tcp_info.sport = ntohs(tcp_header->th_sport);
-			new_info->shared_info.tcp_info.dport = ntohs(tcp_header->th_dport);
-			new_info->shared_info.tcp_info.flags = tcp_header->th_flags;
-			info_outbound.shared_info.tcp_info.sport = new_info->shared_info.tcp_info.dport;
-			info_outbound.shared_info.tcp_info.dport = new_info->shared_info.tcp_info.sport;
-			break;
-		case IPPROTO_UDP:
-			// Store source and destination port
-			new_info->shared_info.udp_info.sport = ntohs(udp_header->uh_sport);
-			new_info->shared_info.udp_info.dport = ntohs(udp_header->uh_dport);
-			info_outbound.shared_info.udp_info.sport = new_info->shared_info.udp_info.dport;
-			info_outbound.shared_info.udp_info.dport = new_info->shared_info.udp_info.sport;
-			break;	
-	}
-
-	// Connection (node list) exist?
-	node = exclusiveFind_shared_sorted_list(w_globvars.DV_l, new_info, DV_Equals);
-
-	// New connection?
-	if (node == NULL) {
-		// The connection is new.
-		// Check if it is a respond of a previous outgoing connection
-		if (ip->ip_p == IPPROTO_ICMP) {
-			// Never can't be a respond
-			new_info->response = 0;
-			new_info->stablished = 0;
-		}
-		else {
-			// It is a respond if there is a relative outgoing connection
-			// and is marked as a starting connection
-			node_reverse = NULL;
-			if (DV_isValidList_outbound()) {
-				node_reverse = exclusiveFind_shared_sorted_list(w_globvars.DV_l_outbound, &info_outbound, NULL);
-			}			
-			//new_info->response = node_reverse != NULL && (ip->ip_p == IPPROTO_TCP || ((struct DV_info_outbound *)node_reverse->info)->shared_info.udp_info.started);
-			if (node_reverse != NULL)
-			{
-				requestReadNode_shared_sorted_list(node_reverse);
-			}
-			new_info->response = node_reverse != NULL && ((struct DV_info_outbound *)node_reverse->info)->starting && !syn;
-			new_info->stablished = node_reverse != NULL;
-			if (node_reverse != NULL) {
-				leaveReadNode_shared_sorted_list(node_reverse);
-				leaveNode_shared_sorted_list(w_globvars.DV_l_outbound, node_reverse);
-			}
-		}
- 		// Initialize stats of new connection
-		info = new_info;
-		info->last_connections = NULL;
-		init_double_list(&info->last_connections);
-#ifdef DEBUG
-		if (sem_wait(&w_globvars.mutex_am)) 
-		{
-			perror("DV_addPacket: sem_wait with mutex_am");
-			exit(1);
-		}
-		w_globvars.allocated_packets_inbound += sizeof(struct info_double_list);
-		if (sem_post(&w_globvars.mutex_am))
-		{
-			perror("DV_addPacket: sem_post with mutex_am");
-			exit(1);		
-		}
-#endif
-		info->hits = 0;
-		info->total_bytes = 0;
-		strcpy(info->country, "");
-		strcpy(info->netname, "");
-		strcpy(info->flags, "?    ");
-		info->iptable_rule = 0;
-	}
-	else {
-		// Connection already exists. Get its information
-		info = (struct DV_info *) node->info;
-		// Free new info
-		free(new_info);
-#ifdef DEBUG
-		if (sem_wait(&w_globvars.mutex_am)) 
-		{
-			perror("DV_addPacket: sem_wait with mutex_am");
-			exit(1);
-		}
-		w_globvars.allocated_packets_inbound -= sizeof(struct DV_info);
-		if (sem_post(&w_globvars.mutex_am))
-		{
-			perror("DV_addPacket: sem_post with mutex_am");
-			exit(1);		
-		}
-#endif
-		// Request write access
-		requestWriteNode_shared_sorted_list(node);
-		if (syn) {
-			// New connection. Remove all last connections
-			clear_all_double_list(info->last_connections, 1, NULL, NULL);
-#ifdef DEBUG
-			if (sem_wait(&w_globvars.mutex_am)) 
-			{
-				perror("DV_addPacket: sem_wait with mutex_am");
-				exit(1);
-			}
-			w_globvars.allocated_packets_inbound -= size_double_list(info->last_connections) * (sizeof(struct DV_info_bandwidth)+sizeof(struct node_double_list));
-			if (sem_post(&w_globvars.mutex_am))
-			{
-				perror("DV_addPacket: sem_post with mutex_am");
-				exit(1);		
-			}
-#endif
-			info->total_bytes = 0;
-			info->response = 0;
-			info->stablished = 0;
-		}
-		if (!info->stablished) {
-			// Connection is not stablished yet
-			// We recheck if it is a a related outgoing connection
-			node_reverse = NULL;
-			if (DV_isValidList_outbound()) {
-				node_reverse = exclusiveFind_shared_sorted_list(w_globvars.DV_l_outbound, &info_outbound, NULL);
-			}
-			//new_info->response = node_reverse != NULL && (ip->ip_p == IPPROTO_TCP || ((struct DV_info_outbound *)node_reverse->info)->shared_info.udp_info.started);
-			if (node_reverse != NULL)
-			{
-				requestReadNode_shared_sorted_list(node_reverse);
-			}
-			info->response = node_reverse != NULL && ((struct DV_info_outbound *)node_reverse->info)->starting && !syn;
-			info->stablished = node_reverse != NULL;
-			if (node_reverse != NULL) {
-				leaveReadNode_shared_sorted_list(node_reverse);
-				leaveNode_shared_sorted_list(w_globvars.DV_l_outbound, node_reverse);
-			}
-		}
-	}
-
-	// One hit more
-	info->hits++;
-
-	// Store current time
-	info->time = now;
-
-	// Store priority
-	info->priority = priority;
-
-	// Add current size to totals
-	info->total_bytes = info->total_bytes + n_bytes;
-
-	// Add current connection to last connections (to calculate bandwith)
-	info_bandwidth = (struct DV_info_bandwidth *) malloc(sizeof(struct DV_info_bandwidth));
-	if (info_bandwidth == NULL) {
-		fprintf(stderr,"DV_addPacket: Could not allocate memory!!\n");
-		exit(1);				
-	}
-#ifdef DEBUG
-	if (sem_wait(&w_globvars.mutex_am)) 
-	{
-		perror("DV_addPacket: sem_wait with mutex_am");
-		exit(1);
-	}
-	w_globvars.allocated_packets_inbound += sizeof(struct DV_info_bandwidth);
-	if (sem_post(&w_globvars.mutex_am))
-	{
-		perror("DV_addPacket: sem_post with mutex_am");
-		exit(1);		
-	}
-#endif
-	info_bandwidth->time = info->time;
-	info_bandwidth->n_bytes = n_bytes;
- 	insert_tail_double_list(info->last_connections, (void *)info_bandwidth);
-#ifdef DEBUG
-	if (sem_wait(&w_globvars.mutex_am)) 
-	{
-		perror("DV_addPacket: sem_wait with mutex_am");
-		exit(1);
-	}
-	w_globvars.allocated_packets_inbound += sizeof(struct node_double_list);
-	if (sem_post(&w_globvars.mutex_am))
-	{
-		perror("DV_addPacket: sem_post with mutex_am");
-		exit(1);		
-	}
-#endif
-	// Calculate bandwidth
-	DV_updateBandwidth(info, now);
-
-	// Refresh the list of connections
-	if (node == NULL) {
-		// Insert the new connection in the list
-		insert_shared_sorted_list(w_globvars.DV_l, info);
-#ifdef DEBUG
-		if (sem_wait(&w_globvars.mutex_am)) 
-		{
-			perror("DV_addPacket: sem_wait with mutex_am");
-			exit(1);
-		}
-		w_globvars.allocated_packets_inbound += sizeof(struct node_shared_sorted_list);
-		if (sem_post(&w_globvars.mutex_am))
-		{
-			perror("DV_addPacket: sem_post with mutex_am");
-			exit(1);		
-		}
-#endif
-	}
-	else {
-		// No more write access needed
-		leaveWriteNode_shared_sorted_list(node);
-
-		// Move existing node to its right position
-		updateNode_shared_sorted_list(w_globvars.DV_l, node);
-
-		// Leaving current node
-		leaveNode_shared_sorted_list(w_globvars.DV_l, node);
-	}
-}
-
-void DV_addPacket_outbound(const struct ip *ip, const struct tcphdr *tcp_header, const struct udphdr *udp_header) {
-	time_t now;
-	struct DV_info_outbound *info, *new_info;
-	struct node_shared_sorted_list *node, *node_reverse;
-	uint16_t src_port=0, dst_port=0;
-	int syn;
-
-	// Protocol wanted??
-	if (ip->ip_p == IPPROTO_ICMP) {
-		return;
-	}
-
-	now = time(NULL);
-
-	// SYN Flag ?
-	syn = ip->ip_p == IPPROTO_TCP && (tcp_header->th_flags & TH_SYN) && !(tcp_header->th_flags & TH_ACK);
-
-	// Check if buffer list has been created
-	if (!DV_isValidList_outbound()) {
-		DV_createList_outbound();
-	}
-
-	// List is valid?
-	if (!DV_isValidList_outbound()) {
-		fprintf(stderr,"DV_addPacket_outbound: List is not valid!!\n");
-		exit(1);
-	}
-
-	new_info = (struct DV_info_outbound *) malloc(sizeof(struct DV_info_outbound));
-	if (new_info == NULL) {
-		fprintf(stderr,"DV_addPacket_outbound: Could not allocate memory!!\n");
-		exit(1);				
-	}
-#ifdef DEBUG
-	if (sem_wait(&w_globvars.mutex_am)) 
-	{
-		perror("DV_addPacket_outbound: sem_wait with mutex_am");
-		exit(1);
-	}
-	w_globvars.allocated_packets_outbound += sizeof(struct DV_info_outbound);
-	if (sem_post(&w_globvars.mutex_am))
-	{
-		perror("DV_addPacket_outbound: sem_post with mutex_am");
-		exit(1);		
-	}
-#endif
-	// Store time
-	new_info->time = now;
-
-	// Store IP Protocol
-	new_info->ip_protocol = ip->ip_p;
-
-	// Store Source and Destination IP address
-	new_info->ip_src = ip->ip_src;
-	new_info->ip_dst = ip->ip_dst;
-
-	// Protocol?
-	switch (ip->ip_p) {
-		case IPPROTO_TCP:
-			// Store source and destination port, and TCP flags
-			new_info->shared_info.tcp_info.sport = ntohs(tcp_header->th_sport);
-			new_info->shared_info.tcp_info.dport = ntohs(tcp_header->th_dport);
-			new_info->shared_info.tcp_info.flags = tcp_header->th_flags;
-			src_port = new_info->shared_info.tcp_info.sport;
-			dst_port = new_info->shared_info.tcp_info.dport;
-			break;
-		case IPPROTO_UDP:
-			// Store source and destination port
-			new_info->shared_info.udp_info.sport = ntohs(udp_header->uh_sport);
-			new_info->shared_info.udp_info.dport = ntohs(udp_header->uh_dport);
-			src_port = new_info->shared_info.udp_info.sport;
-			dst_port = new_info->shared_info.udp_info.dport;
-			break;	
-	}
-
-	// Connection (node list) exist?
-	node = exclusiveFind_shared_sorted_list(w_globvars.DV_l_outbound, new_info, NULL);
-
-	// New connection?
-	if (node == NULL) {
-		// The connection is new. Is it a starting one?
-		// All outgoing connections with src port >= 1024 and
-		// dst port < 1024 are considered as client (starting)
-		// connections
-		new_info->starting = src_port >= 1024 && dst_port < 1024;
-		// It is also a starting connection if TCP and SYN flag is active
-		new_info->starting = new_info->starting || (ip->ip_p == IPPROTO_TCP && syn);
-
-		if (!new_info->starting) {
-			if (ip->ip_p == IPPROTO_UDP && src_port >= 1024) {
-				// UDP connection and candidate to be a client connection
-				// This is a starting connection (by us) if there is not a relative
-				// incoming connections (we are not responding to a previous incoming connection)
-				// If we have recently changed to a new view then we wait a while for
-				// incoming connections until take a decision
-				if (now - w_globvars.view_started <= THRESHOLD_ESTABLISHED_CONNECTIONS) {
-					// Waiting por posible incoming connections. Discard UDP connection
-					free(new_info);
-#ifdef DEBUG
-					if (sem_wait(&w_globvars.mutex_am)) 
-					{
-						perror("DV_addPacket_outbound: sem_wait with mutex_am");
-						exit(1);
-					}
-					w_globvars.allocated_packets_outbound -= sizeof(struct DV_info_outbound);
-					if (sem_post(&w_globvars.mutex_am))
-					{
-						perror("DV_addPacket_outbound: sem_post with mutex_am");
-						exit(1);		
-					}
-#endif
-					return;
-				}
-				// Checking if there is a relative incoming connection. 
-				// If there is not one then we mark the packet as starting connection
-				node_reverse = NULL;
-				if (DV_isValidList()) {
-					node_reverse = exclusiveFind_shared_sorted_list(w_globvars.DV_l, new_info, DV_Reverse);
-				}
-				new_info->starting = node_reverse == NULL;
-				if (node_reverse != NULL) {
-					leaveNode_shared_sorted_list(w_globvars.DV_l, node_reverse);
-				}				
-			}
-		}
-
-		// Insert the new connection in the list
-		insert_shared_sorted_list(w_globvars.DV_l_outbound, new_info);
-#ifdef DEBUG
-		if (sem_wait(&w_globvars.mutex_am)) 
-		{
-			perror("DV_addPacket_outbound: sem_wait with mutex_am");
-			exit(1);
-		}
-		w_globvars.allocated_packets_outbound += sizeof(struct node_shared_sorted_list);
-		if (sem_post(&w_globvars.mutex_am))
-		{
-			perror("DV_addPacket_outbound: sem_post with mutex_am");
-			exit(1);		
-		}
-#endif
-	}
-	else {
-		// Connection already exists. Get its information
-		info = (struct DV_info_outbound *) node->info;
-		// Free new info
-		free(new_info);
-#ifdef DEBUG
-		if (sem_wait(&w_globvars.mutex_am)) 
-		{
-			perror("DV_addPacket_outbound: sem_wait with mutex_am");
-			exit(1);
-		}
-		w_globvars.allocated_packets_outbound -= sizeof(struct DV_info_outbound);
-		if (sem_post(&w_globvars.mutex_am))
-		{
-			perror("DV_addPacket_outbound: sem_post with mutex_am");
-			exit(1);		
-		}
-#endif
-		// Request write access
-		requestWriteNode_shared_sorted_list(node);
-
-		if (syn) {
-			// New connection. 
-			info->starting = 1;
-			leaveWriteNode_shared_sorted_list(node);
-			// Checking if there is a relative incoming connection. 
-			// If there is one then we mark the incoming connection as a response and stablished connection
-			node_reverse = NULL;
-			if (DV_isValidList()) {
-				node_reverse = exclusiveFind_shared_sorted_list(w_globvars.DV_l, info, DV_Reverse);
-			}
-			if (node_reverse != NULL)
-			{
-				requestWriteNode_shared_sorted_list(node_reverse);
-				clear_all_double_list(((struct DV_info *)node_reverse->info)->last_connections, 1, NULL, NULL);
-#ifdef DEBUG
-				if (sem_wait(&w_globvars.mutex_am)) 
-				{
-					perror("DV_addPacket_outbound: sem_wait with mutex_am");
-					exit(1);
-				}
-				w_globvars.allocated_packets_inbound -= size_double_list(((struct DV_info *)node_reverse->info)->last_connections) * (sizeof(struct DV_info_bandwidth)+sizeof(struct node_double_list));
-				if (sem_post(&w_globvars.mutex_am))
-				{
-					perror("DV_addPacket_outbound: sem_post with mutex_am");
-					exit(1);		
-				}
-#endif
-				((struct DV_info *)node_reverse->info)->total_bytes = 0;
-				((struct DV_info *)node_reverse->info)->response = 1;
-				((struct DV_info *)node_reverse->info)->stablished = 1;
-			}
-			if (node_reverse != NULL) {
-				leaveWriteNode_shared_sorted_list(node_reverse);	
-				leaveNode_shared_sorted_list(w_globvars.DV_l, node_reverse);
-			}
-			requestWriteNode_shared_sorted_list(node);
-		}
-
-		// Update time to current time
-		info->time = now;
-		// No more write access needed
-		leaveWriteNode_shared_sorted_list(node);
-		// Leaving current node
-		leaveNode_shared_sorted_list(w_globvars.DV_l_outbound, node);
-	}
-}
-
-void DV_updateBandwidth(struct DV_info *info, time_t now) {
-	unsigned long total_bytes = 0;
-	struct DV_info_bandwidth *info_bandwidth;	
-	time_t t;
-	int stop;
-
-	// First, we remove all connections older than MAX_INTERVAL_BANDWIDTH seconds
-	stop = 0;
-	while (!stop && !isEmpty_double_list(info->last_connections)) {
-		info_bandwidth = (struct DV_info_bandwidth *) front_double_list(info->last_connections);
-		stop = now - info_bandwidth->time <= MAX_INTERVAL_BANDWIDTH;
-		if (!stop) {
-			// We have to remove this last connection
-			remove_front_double_list(info->last_connections, 1);
-#ifdef DEBUG
-			if (sem_wait(&w_globvars.mutex_am)) 
-			{
-				perror("DV_addPacket: sem_wait with mutex_am");
-				exit(1);
-			}
-			w_globvars.allocated_packets_inbound -= sizeof(struct DV_info_bandwidth)+sizeof(struct node_double_list);
-			if (sem_post(&w_globvars.mutex_am))
-			{
-				perror("DV_addPacket: sem_post with mutex_am");
-				exit(1);		
-			}
-#endif
-		}
-	}
-
-	// Get time of older connection
-	t = now;
-	if (!isEmpty_double_list(info->last_connections)) {
-		info_bandwidth = (struct DV_info_bandwidth *)front_double_list(info->last_connections);
-		t = info_bandwidth->time;
-	}
-
-	if (now - t >= MIN_INTERVAL_BANDWIDTH) {
-		// Calculate total bytes 	
-		for_each_double_list(info->last_connections, DV_accumulateBytes, (void *)&total_bytes);
-
-		info->bandwidth = (float)total_bytes / (1024.0 * (now - t + 1));
-	}
-	else {
-		info->bandwidth = 0.0;
-	}
-}
-
-void DV_accumulateBytes(void *val, void *total) {
-	*(unsigned long *)total += ((struct DV_info_bandwidth *)val)->n_bytes;
-}
-
-void DV_freeLastConnections(void *val, void *param) {
-	struct DV_info *info;
-
-	info = (struct DV_info *)val;
-
-	// Clear Bandwidth info
-	clear_all_double_list(info->last_connections, 1, NULL, NULL);
-#ifdef DEBUG
-	if (sem_wait(&w_globvars.mutex_am)) 
-	{
-		perror("DV_addPacket: sem_wait with mutex_am");
-		exit(1);
-	}
-	w_globvars.allocated_packets_inbound -= size_double_list(info->last_connections) * (sizeof(struct DV_info_bandwidth)+sizeof(struct node_double_list));
-	if (sem_post(&w_globvars.mutex_am))
-	{
-		perror("DV_addPacket: sem_post with mutex_am");
-		exit(1);		
-	}
-#endif
-	// Free memory
-	free(info->last_connections);
-#ifdef DEBUG
-	if (sem_wait(&w_globvars.mutex_am)) 
-	{
-		perror("DV_freeLastConnections: sem_wait with mutex_am");
-		exit(1);
-	}
-	w_globvars.allocated_packets_inbound -= sizeof(struct info_double_list);
-	if (sem_post(&w_globvars.mutex_am))
-	{
-		perror("DV_freeLastConnections: sem_post with mutex_am");
-		exit(1);		
-	}
-#endif
-}
-
-void DV_Purge() {
-	struct node_shared_sorted_list *node, *current_node;
-	struct DV_info *info;
-	time_t now;
-	unsigned timeout;
-
-	// List is valid?
+	// Is list valid?
 	if (!DV_isValidList())
 	{
-		return;
+		fprintf(stderr,"DV_ShowInfo: List is not valid!!\n");
+		exit(1);
 	}
 
-	now = time(NULL);
+	DV_updateList();
 
-	// Iterate the list and remove old connections
-	node = firstNode_shared_sorted_list(w_globvars.DV_l);
-	while (node != NULL) {
-		// Get info node
-		info = (struct DV_info *)node->info;
-
-		requestWriteNode_shared_sorted_list(node);
-
-		switch (info->ip_protocol) {
-			case IPPROTO_TCP:
-				timeout = TCP_TIMEOUT;
-				break;
-			case IPPROTO_UDP:
-				timeout = UDP_TIMEOUT;
-				break;
-			default:
-				timeout = ANY_TIMEOUT;
-		}
-
-		// Timeout?
-		if (now - info->time > timeout) {
-			// Leave write access
-			leaveWriteNode_shared_sorted_list(node);
-			// have to delete current node
-			current_node = node;
-			// Before remove current node get the next one
-			node = nextNode_shared_sorted_list(w_globvars.DV_l, node, 0);
-			// Removing current node
-			DV_freeLastConnections(current_node->info, NULL);
-			if (removeNode_shared_sorted_list(w_globvars.DV_l, current_node, 1))
-			{
-#ifdef DEBUG
-				if (sem_wait(&w_globvars.mutex_am)) 
-				{
-					perror("DV_Purge: sem_wait with mutex_am");
-					exit(1);
-				}
-				w_globvars.allocated_packets_inbound -= sizeof(struct DV_info)+sizeof(struct node_shared_sorted_list);
-				if (sem_post(&w_globvars.mutex_am))
-				{
-					perror("DV_Purge: sem_post with mutex_am");
-					exit(1);		
-				}
-#endif
-			}
-		}
-		else {
-			// Update bandwidth
-			DV_updateBandwidth(info, now);
-
-			// Leave write access
-			leaveWriteNode_shared_sorted_list(node);
-
-			// Next node
-			node = nextNode_shared_sorted_list(w_globvars.DV_l, node, 1);
-		}
-	}
-
-	// Remove old outgoing connections
-	DV_Purge_outbound();
+	// Iterate the list and show info on screen
+	w_globvars.result_count_lines = 0;
+	for_each_sorted_list(w_globvars.DV_l, DV_ShowElement, NULL);
 }
 
-void DV_Purge_outbound() {
-	struct node_shared_sorted_list *node, *current_node;
-	struct DV_info_outbound *info;
-	time_t now;
-	unsigned timeout;
-
-	// List is valid?
-	if (!DV_isValidList_outbound())
+void DV_Reset() {
+	if (w_globvars.DV_l != NULL)
 	{
-		return;
+		clear_all_sorted_list(w_globvars.DV_l, 1, NULL, NULL);
 	}
-
-	now = time(NULL);
-
-	// Iterate the list and remove old connections
-	node = firstNode_shared_sorted_list(w_globvars.DV_l_outbound);
-	while (node != NULL) {
-		// Get info node
-		info = (struct DV_info_outbound *)node->info;
-
-		requestReadNode_shared_sorted_list(node);
-
-		switch (info->ip_protocol) {
-			case IPPROTO_TCP:
-				timeout = TCP_TIMEOUT;
-				break;
-			case IPPROTO_UDP:
-				timeout = UDP_TIMEOUT;
-				break;
-		}
-
-		// Timeout?
-		if (now - info->time > timeout) {
-			// Leave read access
-			leaveReadNode_shared_sorted_list(node);
-			// have to delete current node
-			current_node = node;
-			// Before remove current node get the next one
-			node = nextNode_shared_sorted_list(w_globvars.DV_l_outbound, node, 0);
-			// Removing current node
-			if (removeNode_shared_sorted_list(w_globvars.DV_l_outbound, current_node, 1))
-			{
-#ifdef DEBUG
-				if (sem_wait(&w_globvars.mutex_am)) 
-				{
-					perror("DV_Purge: sem_wait with mutex_am");
-					exit(1);
-				}
-				w_globvars.allocated_packets_outbound -= sizeof(struct DV_info_outbound)+sizeof(struct node_shared_sorted_list);
-				if (sem_post(&w_globvars.mutex_am))
-				{
-					perror("DV_Purge: sem_post with mutex_am");
-					exit(1);		
-				}
-#endif
-			}
-		}
-		else {
-			// Leave read access
-			leaveReadNode_shared_sorted_list(node);
-
-			// Next node
-			node = nextNode_shared_sorted_list(w_globvars.DV_l_outbound, node, 1);
-		}
-	}
-}
-
-int DV_Equals(void *val1, void *val2) {
-	struct DV_info *info1, *info2;
-
-	info1 = (struct DV_info *)val1;
-	info2 = (struct DV_info *)val2;
-
-	if (info1->ip_protocol != info2->ip_protocol)
-		return(1);
-
-	if (info1->ip_src.s_addr != info2->ip_src.s_addr)
-		return 1;
-
-	// Protocol?
-	switch (info1->ip_protocol) {
-		case IPPROTO_ICMP:
-			if (info1->shared_info.icmp_info.type != info2->shared_info.icmp_info.type)
-				return 1;
-			break;
-		case IPPROTO_TCP:
-			if (info1->shared_info.tcp_info.dport != info2->shared_info.tcp_info.dport)
-				return 1;
-			break;
-		case IPPROTO_UDP:
-			if (info1->shared_info.udp_info.dport != info2->shared_info.udp_info.dport)
-				return 1;
-			break;	
-	}
-
-	return 0;
-}
-
-int DV_Reverse(void *val1, void *val2) {
-	struct DV_info_outbound *info1;
-	struct DV_info *info2;
-
-	info1 = (struct DV_info_outbound *)val1;
-	info2 = (struct DV_info *)val2;
-
-	if (info1->ip_protocol != info2->ip_protocol)
-		return 1;
-
-	if (info1->ip_src.s_addr != info2->ip_dst.s_addr)
-		return 1;
-
-	// Protocol?
-	switch (info1->ip_protocol) {
-		case IPPROTO_TCP:
-			if (info1->shared_info.tcp_info.dport != info2->shared_info.tcp_info.sport)
-				return 1;
-			break;
-		case IPPROTO_UDP:
-			if (info1->shared_info.udp_info.dport != info2->shared_info.udp_info.sport)
-				return 1;
-			break;	
-	}
-
-	return 0;
 }
 
 int DV_Compare(void *val1, void *val2) {
 	struct DV_info *info1, *info2;
+	struct connection_info *conn1, *conn2;
 	unsigned long grade1, grade2;
 	time_t now, diff_time1, diff_time2;
 
@@ -1221,11 +554,29 @@ int DV_Compare(void *val1, void *val2) {
 	info1 = (struct DV_info *)val1;
 	info2 = (struct DV_info *)val2;
 
-	diff_time1 = now - info1->time;
-	diff_time2 = now - info2->time;
+	if (requestReadNode_shared_sorted_list(info1->conn_node) &&
+	    requestReadNode_shared_sorted_list(info2->conn_node))
+	{
+		conn1 = info1->conn_node->info;
+		conn2 = info2->conn_node->info;
 
-	grade1 = info1->hits;
-	grade2 = info2->hits;
+		diff_time1 = now - conn1->time;
+		diff_time2 = now - conn2->time;
+
+		grade1 = conn1->hits;
+		grade2 = conn2->hits;
+
+		leaveReadNode_shared_sorted_list(info1->conn_node);
+		leaveReadNode_shared_sorted_list(info2->conn_node);
+	}
+#ifdef DEBUG
+	else
+	{
+		// This should never happen
+		fprintf(stderr, "DV_Compare: Connections pointed by node view were removed!!");
+		exit(EXIT_FAILURE);
+	}
+#endif
 
 	if (diff_time1 == 0) {
 		grade1 = grade1 * 1000;
@@ -1262,66 +613,6 @@ int DV_Compare(void *val1, void *val2) {
 		}
 		else {
 			return 0;
-		}
-	}
-}
-
-int DV_Compare_outbound(void *val1, void *val2) {
-	struct DV_info_outbound *info1, *info2;
-
-	info1 = (struct DV_info_outbound *)val1;
-	info2 = (struct DV_info_outbound *)val2;
-
-	// Firt sort by protocol
-	if (info1->ip_protocol < info2->ip_protocol)
-	{
-		return -1;
-	}
-	else {
-		if (info1->ip_protocol > info2->ip_protocol)
-		{
-			return 1;
-		}
-	}
-
-	// They have the same protocol
-	// Second sort by src port
-
-	// Protocol?
-	switch (info1->ip_protocol) {
-		case IPPROTO_TCP:
-			if (info1->shared_info.tcp_info.sport < info2->shared_info.tcp_info.sport) {
-				return -1;
-			}
-			else {
-				if (info1->shared_info.tcp_info.sport > info2->shared_info.tcp_info.sport) {
-					return 1;
-				}
-			}
-			break;
-		case IPPROTO_UDP:
-			if (info1->shared_info.udp_info.sport < info2->shared_info.udp_info.sport) {
-				return -1;
-			}
-			else {
-				if (info1->shared_info.udp_info.sport > info2->shared_info.udp_info.sport) {
-					return 1;
-				}
-			}
-			break;	
-	}
-
-	// They have same src port
-	// Third (and last) sort by dst address
-	if (info1->ip_dst.s_addr < info2->ip_dst.s_addr) {
-		return -1;
-	}
-	else {
-		if (info1->ip_dst.s_addr == info2->ip_dst.s_addr) {
-			return 0;
-		}
-		else {
-			return 1;
 		}
 	}
 }

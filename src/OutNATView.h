@@ -1,17 +1,19 @@
-#ifndef __DEFAULT_VIEW_H
-#define __DEFAULT_VIEW_H
+#ifndef __OUTNAT_VIEW_H
+#define __OUTNAT_VIEW_H
 
 #include <time.h>
 
 #include <SharedSortedList.h>
 #include <Connection.h>
 
-struct DV_info {
+// Constants
+#define BANDWIDTH_PRECISION 0.001
+
+struct ONATV_info {
 	char country[MAX_LEN_COUNTRY+1];	/* Country code where this packet is coming from */
-	char netname[MAX_VISIBLE_NETNAME+1];	/* Net name this packet is coming from */
+	char netname[MAX_VISIBLE_NETNAME+1];	/* Net name this packet is coming from */  
 
 	char flags[6];						/* Extra source address info */
-	time_t iptable_rule;				/* Last time the iptable rule has been updated */
 
 	int stablished;		/* 1 if connection is a stablished one, 0 in another case */
 
@@ -20,6 +22,6 @@ struct DV_info {
 };
 
 // Function prototypes
-void DV_ShowInfo();
+void ONATV_ShowInfo();
 
 #endif

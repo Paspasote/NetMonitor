@@ -18,6 +18,7 @@
 
 // Function prototypes
 void *interface();
+void init_curses();
 void writeLineOnResult(char *text, attr_t attr, int bold);
 void writeLineOnWhois(char *text, attr_t attr, int bold);
 

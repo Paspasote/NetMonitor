@@ -3,8 +3,12 @@
 
 #include <pcap.h>
 #include <semaphore.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
 
 #include <SharedSortedList.h>
+#include <SortedList.h>
 #include <DefaultView.h>
 #include <PacketList.h>
 
@@ -12,10 +16,13 @@ struct const_global_vars
 {
     char *internet_dev;      // network device (internet size) to sniffe
     char *intranet_dev;      // network device (intranet size) to sniffe
-    bpf_u_int32 own_ip_internet;    // IP address of internet device
-    bpf_u_int32 own_mask_internet;  // Mask address of internet device
-    bpf_u_int32 own_ip_intranet;    // IP address of intranet device
-    bpf_u_int32 own_mask_intranet;  // Mask address of intranet device
+    in_addr_t own_ip_internet;    // IP address of internet device
+    in_addr_t own_mask_internet;  // Mask address of internet device
+    in_addr_t network_intranet;    // Address of intranet network
+    in_addr_t own_mask_intranet;  // Mask address of intranet network
+    time_t monitor_started;     // The time monitor was started
+
+
 #ifdef DEBUG
     unsigned cont_is_allow;
     unsigned cont__is_warning;
@@ -36,7 +43,11 @@ struct const_global_vars
 struct write_global_vars
 {
     // Mutex semaphores for incoming/outcoming package lists
-    sem_t mutex_packages_list, mutex_outbound_list;
+    sem_t mutex_internet_packets, mutex_intranet_packets;
+    // Mutex semaphores for hash tables
+    sem_t mutex_conn_internet_in, mutex_conn_internet_out, mutex_conn_intranet_in, mutex_conn_intranet_out;
+    // Mutex semaphore for list view
+    sem_t mutex_view_list;
     // Mutex semaphores for screen
     sem_t mutex_screen, mutex_debug_panel;
     // Mutes semaphore for WhoIs module
@@ -48,19 +59,24 @@ struct write_global_vars
     int visual_mode;
     int result_count_lines;
 
-    // Package lists for Default View
-    shared_sorted_list DV_l;
-    shared_sorted_list DV_l_outbound;
+    // Buffers for internet and intranet packets
+    double_list internet_packets_buffer;
+    double_list intranet_packets_buffer;
 
-    // Package lists for IPG View
-    shared_sorted_list IPG_l;
-    shared_sorted_list IPG_l_outbound;
+    // Hash tables for connections
+    shared_sorted_list * conn_internet_in;
+    shared_sorted_list * conn_internet_out;
+    shared_sorted_list * conn_intranet_in;
+    shared_sorted_list * conn_intranet_out;
+    
+    // Default view List
+    sorted_list DV_l;
 
-    // Package list for NAT View
-    shared_sorted_list OV_l;
+    // IPG view List
+    sorted_list IPG_l;
 
-    // Package list for Debug mode
-    list buffer_packets;
+    // Package list for Outbound NAT View
+    sorted_list ONATV_l;
 
     // The initial time of the current view
     time_t view_started;

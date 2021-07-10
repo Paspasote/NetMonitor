@@ -4,16 +4,21 @@
 #include <SharedSortedList.h>
 
 // Prototypes
-int requestRemoveNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node);
+int requestRemoveNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node, int free_info);
 /* NEEDS: A list already initialized
           A node of the list
+		  1 if info node must be freed, 0 in another case
    MODIFIES: Allow to remove the node. (It does not remove the node yet)
-   RETURN: 1 (true) if no one else has requested to remove the node, 0 (false) in another case
+   RETURN: 1 if node can be removed now, 0 if node must be removed later, -1 if someone else requested to remove this node
    NOTE1: This operation is called automatically by the operations remove_shared_sorted_list and removeNode_shared_sorted_list 
-   NOTE1: This operation is blocking, it first mark the node for removing and then wait for permission to remove
-   NOTE2: After this operation mark the node for removing, only pointers and threads already using the node will be able to perform 
-          operations with this node. Once all of them leave the node, it will be removed		  
+   NOTE2: This operation is not blocking, it first marks the node for removing and if no one else is accessing the node then 
+          remove it. If someone else is accessing then returns without remove. The node will be removed when last proc leaves
+		  the node (leaveNode_shared_sorted_list operation).
+   NOTE3: After this operation marks the node for removing, only pointers and threads with previous allowed permissions will be
+   		  able to perform operations with this node. Once all of them leave the node, it will be removed.		  
 */
+void removeNodeAux_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node);
+
 void quicksort_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *first, struct node_shared_sorted_list *last);
 
 void init_shared_sorted_list(shared_sorted_list *l, int (*compare)(void *, void*) )
@@ -41,9 +46,61 @@ void init_shared_sorted_list(shared_sorted_list *l, int (*compare)(void *, void*
 	(*l)->f_compare = compare;
 }
 
-void requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
+int requestAccessNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node)
 {
-	// One reader more using the node
+	if (l == NULL) 
+	{
+		fprintf(stderr,"requestAccessNode_shared_sorted_list: List is not valid!!\n");
+		exit(1);
+	}
+
+	// Is there a remove request?
+	if (sem_wait(&(node->mutex_sem)))
+	{
+		perror("requestAccessNode_shared_sorted_list: sem_wait with mutex_sem node");
+		exit(1);		
+	}
+	if (node->remove_request)
+	{
+		if (sem_post(&(node->mutex_sem)))
+		{
+			perror("requestAccessNode_shared_sorted_list: sem_post with mutex_sem node");
+			exit(1);		
+		}
+		return 0;
+	}
+
+	// One proc more using the node
+	if (sem_wait(&(l->mutex_list))) 
+	{
+		perror("requestAccessNode_shared_sorted_list: sem_wait with mutex_list");
+		exit(1);
+	}
+	node->nprocs++;
+	if (sem_post(&(l->mutex_list)))
+	{
+		perror("requestAccessNode_shared_sorted_list: sem_post with mutex_list");
+		exit(1);
+	}
+	if (sem_post(&(node->mutex_sem)))
+	{
+		perror("requestAccessNode_shared_sorted_list: sem_post with mutex_sem node");
+		exit(1);		
+	}
+	
+	return 1;
+}
+
+int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
+{
+	// Is there a remove request?
+	if (isNodeRemoved_shared_sorted_list(node))
+	{
+		// Yes. Can't read
+		return 0;
+	}
+
+	// One reader more wants to read the node
 	if (sem_wait(&(node->readers_sem)))
 	{
 		perror("requestReadNode_shared_sorted_list: sem_wait with readers_sem node");
@@ -57,14 +114,14 @@ void requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 	node->nreaders++;
 	// First reader ask for permission
 	// Also no more readers pass if there is a write request (more priority for writers)
-//	if (node->nreaders == 1 || node->write_requests) {
-	if (node->nreaders == 1) {
+	if (node->nreaders == 1 || node->write_requests) {
+//	if (node->nreaders == 1) {
 		if (sem_post(&(node->mutex_sem)))
 		{
 			perror("requestReadNode_shared_sorted_list: sem_post with mutex_sem node");
 			exit(1);		
 		}
-
+		// I'm the first reader. Any writer accessing?
 		if (sem_wait(&(node->writers_sem)))
 		{
 			perror("requestReadNode_shared_sorted_list: sem_wait with writers_sem node");
@@ -72,18 +129,20 @@ void requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 		}
 	}
 	else {
+		// Others readers already accesing. Do not need to ask for permission
 		if (sem_post(&(node->mutex_sem)))
 		{
 			perror("requestReadNode_shared_sorted_list: sem_post with mutex_sem node");
 			exit(1);		
 		}
 	}
+	// Another reader accessing. Allow access to more readers
 	if (sem_post(&(node->readers_sem)))
 	{
 		perror("requestReadNode_shared_sorted_list: sem_post with readers_sem node");
 		exit(1);		
 	}
-
+	return 1;
 }
 
 void leaveReadNode_shared_sorted_list(struct node_shared_sorted_list *node) {
@@ -92,6 +151,11 @@ void leaveReadNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 	{
 		perror("leaveReadNode_shared_sorted_list: sem_wait with mutex_sem node");
 		exit(1);		
+	}
+	if (node->nreaders == 0)
+	{
+		fprintf(stderr,"leaveReadNode_shared_sorted_list: number of readers with access to node is under zero!!\n");
+		exit(1);
 	}
 	node->nreaders--;
 	// Am i the last reader?
@@ -111,7 +175,14 @@ void leaveReadNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 
 }
 
-void requestWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
+int requestWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
+	// Is there a remove request?
+	if (isNodeRemoved_shared_sorted_list(node))
+	{
+		// Yes. Can't read
+		return 0;
+	}
+
 	// One writer more requesting write access to the node
 	if (sem_wait(&(node->mutex_sem)))
 	{
@@ -139,14 +210,32 @@ void requestWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 		exit(1);		
 	}
 	node->write_requests--;
+	node->nwriters++;
 	if (sem_post(&(node->mutex_sem)))
 	{
 		perror("requestWriteNode_shared_sorted_list: sem_post with mutex_sem node");
 		exit(1);		
 	}
+	return 1;
 }
 
 void leaveWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
+	if (sem_wait(&(node->mutex_sem)))
+	{
+		perror("leaveWriteNode_shared_sorted_list: sem_wait with mutex_sem node");
+		exit(1);		
+	}
+	if (node->nwriters == 0)
+	{
+		fprintf(stderr,"leaveWriteNode_shared_sorted_list: number of writers with access to node is under zero!!\n");
+		exit(1);
+	}
+	node->nwriters--;
+	if (sem_post(&(node->mutex_sem)))
+	{
+		perror("leaveWriteNode_shared_sorted_list: sem_post with mutex_sem node");
+		exit(1);		
+	}
 	// Free node for writers (or readers)
 	if (sem_post(&(node->writers_sem)))
 	{
@@ -155,84 +244,67 @@ void leaveWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 	}
 }
 
-int requestRemoveNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node) {
-	int ret;
-
-	if (sem_wait(&(l->mutex_list)))
+int requestRemoveNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node, int free_info) 
+{
+	if (l == NULL) 
 	{
-		perror("requestRemoveNode_shared_sorted_list: sem_wait with mutex_list");
+		fprintf(stderr,"requestRemoveNode_shared_sorted_list: List is not valid!!\n");
 		exit(1);
 	}
 
 	// Is there another remove request?
-	if (node->remove_request) {
+	if (sem_wait(&(node->mutex_sem)))
+	{
+		perror("requestRemoveNode_shared_sorted_list: sem_wait with mutex_sem node");
+		exit(1);
+	}
+	if (node->remove_request)
+	{
 		// Yes. Can't remove node
-		if (sem_post(&(l->mutex_list)))
+		if (sem_post(&(node->mutex_sem)))
 		{
-			perror("requestRemoveNode_shared_sorted_list: sem_post with mutex_list");
+			perror("requestRemoveNode_shared_sorted_list: sem_post with mutex_sem node");
 			exit(1);		
 		}
-		ret=0;
+		return -1;
 	}
-	else {
-		// No. We are going to remove node
-		node->remove_request = 1;
-		if (sem_post(&(l->mutex_list)))
-		{
-			perror("requestRemoveNode_shared_sorted_list: sem_post with mutex_list");
-			exit(1);		
-		}
-		// Request write access
-		if (sem_wait(&(node->writers_sem)))
-		{
-			perror("requestRemoveNode_shared_sorted_list: sem_wait with writers_sem node");
-			exit(1);		
-		}
-		if (sem_wait(&(l->mutex_list))) 
-		{
-			perror("requestRemoveNode_shared_sorted_list: sem_wait with mutex_list");
-			exit(1);
-		}
-		// Am I the only one in this node?
-		while (node->nprocs > 1) {
-			if (sem_post(&(l->mutex_list)))
-			{
-				perror("requestRemoveNode_shared_sorted_list: sem_post with mutex_list");
-				exit(1);		
-			}
-			// No. Request write access again
-			// Before we have to free node for writers (or readers)
-			if (sem_post(&(node->writers_sem)))
-			{
-				perror("requestRemoveNode_shared_sorted_list: sem_post with writers_sem node");
-				exit(1);		
-			}
-			if (sem_wait(&(node->writers_sem)))
-			{
-				perror("requestRemoveNode_shared_sorted_list: sem_wait with writers_sem node");
-				exit(1);		
-			}
-			if (sem_wait(&(l->mutex_list))) 
-			{
-				perror("requestRemoveNode_shared_sorted_list: sem_wait with mutex_list");
-				exit(1);
-			}
-		}
-		if (sem_post(&(l->mutex_list)))
-		{
-			perror("requestRemoveNode_shared_sorted_list: sem_post with mutex_list");
-			exit(1);		
-		}
-
-		ret=1;
+	// No. We can remove the node
+	node->remove_request = 1;
+	node->free_info = free_info;
+	if (sem_post(&(node->mutex_sem)))
+	{
+		perror("requestRemoveNode_shared_sorted_list: sem_post with mutex_sem node");
+		exit(1);		
 	}
 
-	return ret;
+	// Am I the only one in this node?
+	if (sem_wait(&(l->mutex_list))) 
+	{
+		perror("requestRemoveNode_shared_sorted_list: sem_wait with mutex_list");
+		exit(1);
+	}
+	if (node->nprocs > 1) {
+		// No. return 0
+		if (sem_post(&(l->mutex_list)))
+		{
+			perror("requestRemoveNode_shared_sorted_list: sem_post with mutex_list");
+			exit(1);		
+		}
+		return 0;
+	}
 
+	return 1;
 }
 
-void leaveNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node) {
-		// One proc less using the node
+void leaveNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node) 
+{
+	if (l == NULL) 
+	{
+		fprintf(stderr,"leaveNode_shared_sorted_list: List is not valid!!\n");
+		exit(1);
+	}
+
+	// One proc less using the node
 	if (sem_wait(&(l->mutex_list))) 
 	{
 		perror("leaveNode_shared_sorted_list: sem_wait with mutex_list");
@@ -243,12 +315,18 @@ void leaveNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorte
 		exit(1);
 	}
 	node->nprocs--;
+
+	// Is this node marked to be removed and last proc leaves node?
+	if (node->nprocs == 0 && node->remove_request)
+	{
+		// Remove this node
+		removeNodeAux_shared_sorted_list(l, node);
+	}
 	if (sem_post(&(l->mutex_list)))
 	{
 		perror("leaveNode_shared_sorted_list: sem_post with mutex_list");
 		exit(1);
 	}
-
 }
 
 int isEmpty_shared_sorted_list(shared_sorted_list l)
@@ -299,8 +377,34 @@ unsigned size_shared_sorted_list(shared_sorted_list l)
 	return ret;
 }
 
-struct node_shared_sorted_list * firstNode_shared_sorted_list(shared_sorted_list l) {
+int isNodeRemoved_shared_sorted_list(struct node_shared_sorted_list *node)
+{
+	int ret;
+
+	// Is there a remove request?
+	if (sem_wait(&(node->mutex_sem)))
+	{
+		perror("requestReadNode_shared_sorted_list: sem_wait with mutex_sem node");
+		exit(1);		
+	}
+	ret = node->remove_request;
+	if (sem_post(&(node->mutex_sem)))
+	{
+		perror("requestReadNode_shared_sorted_list: sem_post with mutex_sem node");
+		exit(1);		
+	}
+	return ret;
+}
+
+struct node_shared_sorted_list * firstNode_shared_sorted_list(shared_sorted_list l) 
+{
 	struct node_shared_sorted_list *first_node;
+
+	if (l == NULL) 
+	{
+		fprintf(stderr,"firstNode_shared_sorted_list: List is not valid!!\n");
+		exit(1);
+	}
 
 	if (sem_wait(&(l->mutex_list))) 
 	{
@@ -348,8 +452,15 @@ struct node_shared_sorted_list * firstNode_shared_sorted_list(shared_sorted_list
 
 }
 
-struct node_shared_sorted_list * nextNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node, int leave_current) {
+struct node_shared_sorted_list * nextNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node, int leave_current) 
+{
 	struct node_shared_sorted_list *next_node;
+
+	if (l == NULL) 
+	{
+		fprintf(stderr,"nextNode_shared_sorted_list: List is not valid!!\n");
+		exit(1);
+	}
 
 	if (sem_wait(&(l->mutex_list))) 
 	{
@@ -435,15 +546,21 @@ struct node_shared_sorted_list * find_shared_sorted_list(shared_sorted_list l, v
 	node = firstNode_shared_sorted_list(l);
 	while (node != NULL && !fin) {
 		// Request read access to node
-		requestReadNode_shared_sorted_list(node);
+		if (requestReadNode_shared_sorted_list(node))
+		{
+			// Compares val with info node
+			fin = (*f)(val, node->info) != 1;
 
-		// Compares val with info node
-		fin = (*f)(val, node->info) != 1;
+			if (!fin) {
+				// No more read access needed for node
+				leaveReadNode_shared_sorted_list(node);
 
-		if (!fin) {
-			// No more read access needed for node
-			leaveReadNode_shared_sorted_list(node);
-
+				// Next node
+				node = nextNode_shared_sorted_list(l, node, 1);
+			}
+		}
+		else
+		{
 			// Next node
 			node = nextNode_shared_sorted_list(l, node, 1);
 		}
@@ -494,7 +611,7 @@ struct node_shared_sorted_list * exclusiveFind_shared_sorted_list(shared_sorted_
 
 	// Iterate the list to search the element with value >= val
 	node = l->header;
-	while (node != NULL && node->remove_request == 0 && (*f)(val, node->info) == 1) {
+	while (node != NULL && (node->remove_request == 1 || (*f)(val, node->info) == 1)) {
 			// Next node
 			node = node->next;
 	}
@@ -505,6 +622,7 @@ struct node_shared_sorted_list * exclusiveFind_shared_sorted_list(shared_sorted_
 			node = NULL;
 		}
 		else {
+			// One proc more using node
 			node->nprocs++;
 		}
 	}
@@ -539,14 +657,19 @@ void clear_all_shared_sorted_list(shared_sorted_list l, int free_info, void (*f)
 
 		if (f != NULL) {
 			// Request write access
-			requestWriteNode_shared_sorted_list(current_node);
-			(*f)(current_node->info, param);
-			// Leave write access
-			leaveWriteNode_shared_sorted_list(current_node);
+			if (requestWriteNode_shared_sorted_list(current_node))
+			{
+				(*f)(current_node->info, param);
+				// Leave write access
+				leaveWriteNode_shared_sorted_list(current_node);
+			}
 		}
 
 		// Remove current node
-		removeNode_shared_sorted_list(l, current_node, free_info);
+		if (removeNode_shared_sorted_list(l, current_node, free_info) != 1)
+		{
+			leaveNode_shared_sorted_list(l, current_node);
+		}
 	}
 }
 
@@ -573,7 +696,9 @@ void insert_shared_sorted_list(shared_sorted_list l,  void * val)
 	new_node->remove_request = 0;
 	new_node->write_requests = 0;
 	new_node->nreaders = 0;
-	new_node->nprocs = 0;	
+	new_node->nwriters = 0;
+	new_node->nprocs = 0;
+	new_node->free_info = 0;
 	if (sem_init(&(new_node->writers_sem), 0, 1))
 	{		
 		perror("insert_shared_sorted_list: Couldn't create writers_sem semaphore for the node!!!!");
@@ -625,16 +750,22 @@ void insert_shared_sorted_list(shared_sorted_list l,  void * val)
 		node = firstNode_shared_sorted_list(l);
 		while (node != NULL && !fin) {
 			// Request read access to node
-			requestReadNode_shared_sorted_list(node);
+			if (requestReadNode_shared_sorted_list(node))
+			{
+				// Compares val with info node
+				fin = (*f)(val, node->info) != 1;
 
-			// Compares val with info node
-			fin = (*f)(val, node->info) != 1;
+				// No more read access needed for node
+				leaveReadNode_shared_sorted_list(node);
 
-			// No more read access needed for node
-			leaveReadNode_shared_sorted_list(node);
-
-			if (!fin) {
-				// We have to continue searching
+				if (!fin) {
+					// We have to continue searching
+					// Next node
+					node = nextNode_shared_sorted_list(l, node, 1);
+				}
+			}
+			else
+			{
 				// Next node
 				node = nextNode_shared_sorted_list(l, node, 1);
 			}
@@ -701,10 +832,171 @@ void insert_shared_sorted_list(shared_sorted_list l,  void * val)
 	}
 }
 
-void remove_shared_sorted_list(shared_sorted_list l, void *val, int free_info, int (*compare)(void *, void*))
+struct node_shared_sorted_list * insert_access_shared_sorted_list(shared_sorted_list l,  void * val)
+{
+	int (*f)(void *, void*);
+	struct node_shared_sorted_list *new_node = NULL, *node, *prev_node;
+	int fin = 0;
+
+	// Is list initialized?
+	if (l == NULL) 
+	{
+		fprintf(stderr,"insert_shared_sorted_list: List is not valid!!\n");
+		exit(1);
+	}
+
+	// Create the new node
+	new_node = (struct node_shared_sorted_list *) malloc(sizeof(struct node_shared_sorted_list));
+	if (new_node == NULL)
+	{
+		fprintf(stderr,"insert_shared_sorted_list: Could not allocate memory!!\n");
+		exit(1);		
+	}
+	new_node->remove_request = 0;
+	new_node->write_requests = 0;
+	new_node->nreaders = 0;
+	new_node->nwriters = 0;
+	new_node->nprocs = 1;
+	new_node->free_info = 0;
+	if (sem_init(&(new_node->writers_sem), 0, 1))
+	{		
+		perror("insert_shared_sorted_list: Couldn't create writers_sem semaphore for the node!!!!");
+		exit(1);
+	}
+	if (sem_init(&(new_node->readers_sem), 0, 1))
+	{		
+		perror("insert_shared_sorted_list: Couldn't create readers_sem semaphore for the node!!!!");
+		exit(1);
+	}
+	if (sem_init(&(new_node->mutex_sem), 0, 1))
+	{		
+		perror("insert_shared_sorted_list: Couldn't create mutex_sem semaphore for the node!!!!");
+		exit(1);
+	}
+	new_node->info = val;
+
+	if (sem_wait(&(l->mutex_list))) 
+	{
+		perror("insert_shared_sorted_list: sem_wait with mutex_list");
+		exit(1);
+	}
+
+	// Empty list?
+	if (l->n_elements == 0) {
+		// Special case: list is empty
+		new_node->prev = NULL;
+		new_node->next = NULL;
+		l->header = new_node;
+		l->tail = new_node;
+		l->n_elements++;
+		if (sem_post(&(l->mutex_list)))
+		{
+			perror("insert_shared_sorted_list: sem_post with mutex_list");
+			exit(1);
+		}
+	}
+	else {
+		// List is not empty
+		f = l->f_compare;
+		if (sem_post(&(l->mutex_list)))
+		{
+			perror("insert_shared_sorted_list: sem_post with mutex_list");
+			exit(1);
+		}
+
+		// Find the position for the new node
+		// Iterate the list to search the element equal or greater than val
+		node = firstNode_shared_sorted_list(l);
+		while (node != NULL && !fin) {
+			// Request read access to node
+			if (requestReadNode_shared_sorted_list(node))
+			{
+				// Compares val with info node
+				fin = (*f)(val, node->info) != 1;
+
+				// No more read access needed for node
+				leaveReadNode_shared_sorted_list(node);
+
+				if (!fin) {
+					// We have to continue searching
+					// Next node
+					node = nextNode_shared_sorted_list(l, node, 1);
+				}
+			}
+			else
+			{
+				// Next node
+				node = nextNode_shared_sorted_list(l, node, 1);
+			}
+		}
+
+		if (sem_wait(&(l->mutex_list))) 
+		{
+			perror("insert_shared_sorted_list: sem_wait with mutex_list");
+			exit(1);
+		}
+
+		if (node != NULL) {
+			// Not inserting at the end of the list
+			// Get previous node
+			prev_node = node->prev;
+			node->prev = new_node;
+
+			// Inserting before node
+			new_node->next = node;
+			new_node->prev = prev_node;
+
+			if (prev_node == NULL) {
+				// Inserting at the beginning
+				l->header = new_node;
+			}
+			else {
+				// Inserting at the middle
+				prev_node->next = new_node;
+			}
+
+			// One more element in the list
+			l->n_elements++;
+
+			if (sem_post(&(l->mutex_list)))
+			{
+				perror("insert_shared_sorted_list: sem_post with mutex_list");
+				exit(1);
+			}
+
+			// Leaving current node
+			leaveNode_shared_sorted_list(l, node);
+		}
+		else {
+			// Inserting at the end of the list
+			// Get previous node
+			prev_node = l->tail;
+
+			// Inserting at the end
+			new_node->next = node;
+			new_node->prev = prev_node;
+
+			prev_node->next = new_node;
+			l->tail = new_node;
+
+			// One more element in the list
+			l->n_elements++;
+
+			if (sem_post(&(l->mutex_list)))
+			{
+				perror("insert_shared_sorted_list: sem_post with mutex_list");
+				exit(1);
+			}
+		}
+	}
+	return new_node;
+}
+
+int remove_shared_sorted_list(shared_sorted_list l, void *val, int free_info, int (*compare)(void *, void*))
 {
 	int (*f)(void *, void*);
 	struct node_shared_sorted_list *node, *current;
+	int count, result;
 
 	if (l == NULL) 
 	{
@@ -738,16 +1030,25 @@ void remove_shared_sorted_list(shared_sorted_list l, void *val, int free_info, i
 		current = node;
 
 		// Next node
-		node = nextNode_shared_sorted_list(l, node, 1);
+		node = nextNode_shared_sorted_list(l, node, 0);
 
 		// Remove current node
-		removeNode_shared_sorted_list(l, current, free_info);
+		result = removeNode_shared_sorted_list(l, current, free_info);
+		if (result != 1)
+		{
+			leaveNode_shared_sorted_list(l, current);
+		}
+		if (result != -1)
+		{
+			count++;
+		}
 	}
+	return count;
 }
 
 int removeNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node, int free_info) 
 {
-	struct node_shared_sorted_list *prev_node, *next_node;
+	int ret;
 
 	if (l == NULL) 
 	{
@@ -755,16 +1056,32 @@ int removeNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorte
 		exit(1);
 	}
 
-	if (!requestRemoveNode_shared_sorted_list(l, node)) {
-		// Someone else is going to remove this node. Returning now
-		return 0;
+	ret = requestRemoveNode_shared_sorted_list(l, node, free_info);
+	if (ret != 1) {
+		return ret;
 	}
 
 	// We can now remove the node safely
 
-	if (sem_wait(&(l->mutex_list))) 
+	// Remove the node from list
+	removeNodeAux_shared_sorted_list(l, node);
+
+	if (sem_post(&(l->mutex_list)))
 	{
-		perror("removeNode_shared_sorted_list: sem_wait with mutex_list");
+		perror("removeNode_shared_sorted_list: sem_post with mutex_list");
+		exit(1);
+	}
+
+	return 1;
+}
+
+void removeNodeAux_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node)
+{
+	struct node_shared_sorted_list *prev_node, *next_node;
+
+	if (l == NULL) 
+	{
+		fprintf(stderr,"removeNodeAux_shared_sorted_list: List is not valid!!\n");
 		exit(1);
 	}
 
@@ -773,7 +1090,6 @@ int removeNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorte
 	sem_destroy(&(node->readers_sem));
 	sem_destroy(&(node->mutex_sem));
 
-	// Remove the node from list
 	prev_node = node->prev;
 	next_node = node->next;
 	if (prev_node == NULL) {
@@ -791,19 +1107,11 @@ int removeNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorte
 		next_node->prev = prev_node;
 	}
 
-	if (free_info) {
+	if (node->free_info) {
 		free(node->info);
 	}
 	free(node);
 	l->n_elements--;
-
-	if (sem_post(&(l->mutex_list)))
-	{
-		perror("removeNode_shared_sorted_list: sem_post with mutex_list");
-		exit(1);
-	}
-
-	return 1;
 }
 
 void updateNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node) {
@@ -894,7 +1202,7 @@ void for_each_readonly_shared_sorted_list(shared_sorted_list l, void (*f)(void *
 
 	if (l == NULL) 
 	{
-		fprintf(stderr,"for_each_shared_sorted_list: List is not valid!!\n");
+		fprintf(stderr,"for_each_readonly_shared_sorted_list: List is not valid!!\n");
 		exit(1);
 	}
 
@@ -902,10 +1210,12 @@ void for_each_readonly_shared_sorted_list(shared_sorted_list l, void (*f)(void *
 	node = firstNode_shared_sorted_list(l);
 	while (node != NULL) {
 		// Request read access
-		requestReadNode_shared_sorted_list(node);
-		(*f)(node->info, param);
-		// Leave read access
-		leaveReadNode_shared_sorted_list(node);
+		if (requestReadNode_shared_sorted_list(node))
+		{
+			(*f)(node->info, param);
+			// Leave read access
+			leaveReadNode_shared_sorted_list(node);
+		}
 		// Next node
 		node = nextNode_shared_sorted_list(l, node, 1);
 	}
@@ -924,10 +1234,12 @@ void for_each_shared_sorted_list(shared_sorted_list l, void (*f)(void *, void *)
 	node = firstNode_shared_sorted_list(l);
 	while (node != NULL) {
 		// Request write access
-		requestWriteNode_shared_sorted_list(node);
-		(*f)(node->info, param);
-		// Leave write access
-		leaveWriteNode_shared_sorted_list(node);
+		if (requestWriteNode_shared_sorted_list(node))
+		{
+			(*f)(node->info, param);
+			// Leave write access
+			leaveWriteNode_shared_sorted_list(node);
+		}
 		// Next node
 		node = nextNode_shared_sorted_list(l, node, 1);
 	}
@@ -979,6 +1291,12 @@ void resort_shared_sorted_list(shared_sorted_list l) {
 void quicksort_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *first, struct node_shared_sorted_list *last) {
 	void *pivot;	// Pivot element will be the last
 	struct node_shared_sorted_list *p, *current, *prev_current, *next_current, *next_last;
+
+	if (l == NULL) 
+	{
+		fprintf(stderr,"quicksort_shared_sorted_list: List is not valid!!\n");
+		exit(1);
+	}
 
 	// Base case: empty list or one element
 	if (first == last) return;

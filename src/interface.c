@@ -12,7 +12,7 @@
 #include <PacketList.h>
 #include <DefaultView.h>
 #include <IPGroupedView.h>
-#include <OutboundView.h>
+#include <OutNATView.h>
 #ifdef DEBUG
 #include <debug.h>
 #endif
@@ -58,7 +58,6 @@ WINDOW *main_screen, *info_panel, *result_panel, *whois_panel, *d_whois_window;
 
 // Function prototypes
 void user_interface();
-void init_curses();
 void refreshTop();
 void getPanelDimensions();
 int getTextAttrLine(int row, chtype **text);
@@ -76,10 +75,6 @@ void changeView();
 void showWhoisDatabase();
 
 void *interface(void *ptr_paramt) {
-    if (w_globvars.visual_mode != -1) {
-        init_curses();
-    }
-
 	while (1)
 	{
         if (w_globvars.visual_mode != -1) {
@@ -89,7 +84,7 @@ void *interface(void *ptr_paramt) {
         }
         else {            
             // Debug mode. Prints all info
-            show_info();
+            PL_show_info(1);
         }
 	}
 }
@@ -259,13 +254,14 @@ void refreshTop()
  	/***************************  DEBUG ****************************/
 	{
 		char m[255];
-        int cont_inbound, cont_outbound;
+        int i, cont_internet, cont_intranet, cont_internet_in, cont_internet_out, cont_intranet_in, cont_intranet_out;
 
+        /*
         if (sem_wait(&w_globvars.mutex_am)) 
         {
             perror("refreshTop: sem_wait with mutex_am");
             exit(1);
-        }
+        }        
 		sprintf(m, "Config mem.: %0lu   Inbound mem.: %0lu   Outbound mem.: %0lu   Whois mem.: %0lu   Otros mem.: %0lu", w_globvars.allocated_config, w_globvars.allocated_packets_inbound, w_globvars.allocated_packets_outbound, w_globvars.allocated_whois, w_globvars.allocated_others);
 		if (sem_post(&w_globvars.mutex_am))
 		{
@@ -273,29 +269,49 @@ void refreshTop()
 			exit(1);		
 		}
 		debugMessageXY(1, 0, m, NULL, 1);
+        */
         sprintf(m, "is_allow: %0u   is_warning: %0u   is_alert: %0u   is_deny: %0u   os_allow: %0u   os_warning: %0u   os_alert: %0u   os_deny: %0u",
                 c_globvars.cont_is_allow, c_globvars.cont__is_warning, c_globvars.cont_is_alert, c_globvars.cont_is_deny, c_globvars.cont_os_allow, c_globvars.cont_os_warning, c_globvars.cont_os_alert, c_globvars.cont_os_deny);
 		debugMessageXY(2, 0, m, NULL, 1);        
         sprintf(m, "oh_allow: %0u   oh_warning: %0u   oh_alert: %0u   oh_deny: %0u   Serv_alias: %0u",
                 c_globvars.cont_oh_allow, c_globvars.cont_oh_warning, c_globvars.cont_oh_alert, c_globvars.cont_oh_deny, c_globvars.cont_services_alias);
 		debugMessageXY(3, 0, m, NULL, 1);
-        if (w_globvars.DV_l != NULL)
+
+        cont_internet = 0;
+        if (w_globvars.internet_packets_buffer != NULL)
         {
-            cont_inbound = size_shared_sorted_list(w_globvars.DV_l);
+            cont_internet = size_double_list(w_globvars.internet_packets_buffer);
         }
-        else
+        cont_intranet = 0;
+        if (w_globvars.intranet_packets_buffer != NULL)
         {
-            cont_inbound = 0;
+            cont_intranet = size_double_list(w_globvars.intranet_packets_buffer);
         }
-        if (w_globvars.DV_l_outbound != NULL)
+        cont_internet_in = 0;
+        cont_internet_out = 0;
+        cont_intranet_in = 0;
+        cont_intranet_out = 0;
+        for (i=0; i<65536; i++)
         {
-            cont_outbound = size_shared_sorted_list(w_globvars.DV_l_outbound);
+            if (w_globvars.conn_internet_in[i] != NULL)
+            {
+                cont_internet_in += size_shared_sorted_list(w_globvars.conn_internet_in[i]);
+            }
+            if (w_globvars.conn_internet_out[i] != NULL)
+            {
+                cont_internet_out += size_shared_sorted_list(w_globvars.conn_internet_out[i]);
+            }
+            if (w_globvars.conn_intranet_in[i] != NULL)
+            {
+                cont_intranet_in += size_shared_sorted_list(w_globvars.conn_intranet_in[i]);
+            }
+            if (w_globvars.conn_intranet_out[i] != NULL)
+            {
+                cont_intranet_out += size_shared_sorted_list(w_globvars.conn_intranet_out[i]);
+            }
         }
-        else
-        {
-            cont_outbound = 0;
-        }
-        sprintf(m, "Inbounds: %0u   Outbounds: %0u   Whois: %0d", cont_inbound, cont_outbound, numberOfWhoisRegisters());
+        sprintf(m, "Pending Internet Packets: %0u   Pending Intranet Packets: %0u  Internet IN: %0u  Internet OUT: %0u  Intranet IN: %0u  Intranet OUT: %0u   Whois: %0d            ", 
+                cont_internet, cont_intranet, cont_internet_in, cont_internet_out, cont_intranet_in, cont_intranet_out, numberOfWhoisRegisters());
 		debugMessageXY(4, 0, m, NULL, 1);
 	}
 	/*****************************************************************/
@@ -362,9 +378,6 @@ void refreshTop()
             // Show horizontal line
             whline(info_panel, 0, INFO_COLS);
 
-            // Clear timeout connections
-            DV_Purge();
-
             if (!no_output) {
                 // Show incoming connections sorted by # hits and recent hits
                 DV_ShowInfo();
@@ -373,14 +386,11 @@ void refreshTop()
         case 1:
             // Source IP grouped view. 
             // Show header
- 	        sprintf(s, "%-10s %-8s  %-7s %-13s %-15s  %15s  %-2s  %-16s    %-s\n", "DATE", "TIME", "# HITS", "TOTAL TRANS.", "BANDWIDTH", "SOURCE IP", "CT", "NET NAME", "[#HITS]SERVICE");
+ 	        sprintf(s, "%-10s %-8s  %-7s %-13s %-15s  %15s  %-2s  %-16s    %-5s %-s\n", "DATE", "TIME", "# HITS", "TOTAL TRANS.", "BANDWIDTH", "SOURCE IP", "CT", "NET NAME", "FLAGS", "[#HITS]SERVICE");
             waddstr(info_panel, s);
            
             // Show horizontal line
             whline(info_panel, 0, INFO_COLS);
-
-            // Clear timeout connections
-            IPG_Purge();
 
             if (!no_output) {
                 // Show incoming connections grouped by IP and sorted by # hits and recent hits
@@ -396,11 +406,9 @@ void refreshTop()
             // Show horizontal line
             whline(info_panel, 0, INFO_COLS);
 
-            // Clear timeout connections
-            OV_Purge();
             if (!no_output) {
                 // Show outgoing intranet connections sorted by bandwidth and recent hits
-                OV_ShowInfo();
+                ONATV_ShowInfo();
             }
             break;
     }
@@ -914,7 +922,6 @@ void changeView()
     int new_visual_mode;
 
     mvwaddstr(info_panel, 2, 0, "1-Default view   2-Grouped by source IP   3-NAT view  (Any other key to abort)\n");
-    waddstr(info_panel, "IF VIEW CHANGES ALL INFO WILL BE RESET!!\n");
 
     // Refresh panels
     getPanelDimensions();
@@ -950,19 +957,19 @@ void changeView()
         case 0:
             // Default view
             // Can't do NAT view. There is not intranet device
-            DV_Reset();
+            //DV_Reset();
             break;
 
         case 1:
             // Grouped source IP view
             // Can't do NAT view. There is not intranet device
-            IPG_Reset();
+            //IPG_Reset();
             break;
 
         case 2:
             // NAT view
             // Can't do NAT view. There is not intranet device
-            OV_Reset();
+            //OV_Reset();
             break;
     }
 
