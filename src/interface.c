@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <regex.h>
 #include <unistd.h>
 #include <time.h>
 #include <semaphore.h>
@@ -28,6 +29,10 @@ extern struct write_global_vars w_globvars;
 // global vars
 int reEntry = 0;
 int no_output = 0;
+int temp_display_seconds;
+char temp_message[255];
+attr_t temp_attr;
+int temp_highlight;
 
 int result_selected_row = -1;
 int result_start_posY;
@@ -61,6 +66,8 @@ void user_interface();
 void refreshTop();
 void getPanelDimensions();
 int getTextAttrLine(int row, chtype **text);
+int getTextLine(int row, char **text, int max_size);
+int extractIPAddress(char *text, char *address1, char *address2);
 void clearSelection();
 void setSelection();
 void selectionDown();
@@ -71,7 +78,8 @@ void selectionStart();
 void selectionEnd();
 void resetInterface();
 void quitInterface();
-void changeView(); 
+void changeView();
+void UI_banIP(int ban); 
 void showWhoisDatabase();
 
 void *interface(void *ptr_paramt) {
@@ -119,6 +127,16 @@ void user_interface()
             {
                 changeView();
             }
+            break;
+
+        case 'b':
+        case 'B':
+            UI_banIP(1);
+            break;
+
+        case 'u':
+        case 'U':
+            UI_banIP(0);
             break;
 
         case 'w':
@@ -208,9 +226,21 @@ void writeLineOnResult(char *text, attr_t attr, int highlight)
     waddstr(result_panel, text);
 
 
-    if (attr) {
+    if (attr || highlight) {
     	wattrset(result_panel, 0);
     }
+}
+
+void writeLineOnInfo(char *text, attr_t attr, int highlight, int seconds)
+{
+    strncpy(temp_message , text, 254);
+    if (strlen(text) > 254)
+    {
+        temp_message[254] = '\0';
+    }
+    temp_attr = attr;
+    temp_highlight = highlight;
+    temp_display_seconds = seconds;
 }
 
 void writeLineOnWhois(char *text, attr_t attr, int highlight) 
@@ -238,7 +268,7 @@ void writeLineOnWhois(char *text, attr_t attr, int highlight)
     waddstr(whois_panel, text);
 
 
-    if (attr) {
+    if (attr || highlight) {
     	wattrset(whois_panel, 0);
     }
 }
@@ -356,7 +386,7 @@ void refreshTop()
 	t = localtime(&now);
     if (!no_output)
     {
-	    sprintf(s, "%02d/%02d/%4d %02d:%02d:%02d   # Connections: %-4d   Whois requests this day: %-4u\n", t->tm_mday, t->tm_mon, 1900+t->tm_year, t->tm_hour, t->tm_min, t->tm_sec, w_globvars.result_count_lines, req);
+	    sprintf(s, "%02d/%02d/%4d %02d:%02d:%02d   # Connections: %-4d   Whois requests this day: %-4u \n", t->tm_mday, t->tm_mon, 1900+t->tm_year, t->tm_hour, t->tm_min, t->tm_sec, w_globvars.result_count_lines, req);
     }
     else
     {
@@ -365,7 +395,27 @@ void refreshTop()
     mvwaddstr(info_panel, 0, 0, s);
 
     // Show menu on info panel
-    waddstr(info_panel, "V-Change View  W-Toggle Whois database view  Q-Quit\n\n");
+    waddstr(info_panel, "V-Change View  W-Toggle Whois database view  Q-Quit\n");
+
+    // Show temporal info on message (if any)
+    if (temp_display_seconds)
+    {
+        if (temp_attr) {
+            wattrset(info_panel, temp_attr);
+        }
+        if (temp_highlight) {
+            wattron(info_panel, A_BOLD);
+        }
+
+        waddstr(info_panel, temp_message);
+
+
+        if (temp_attr || temp_highlight) {
+            wattrset(info_panel, 0);
+        }
+        temp_display_seconds--;
+    }
+    waddstr(info_panel, "\n");
 
     // Show info with the view selected by user or with the default view
     switch (w_globvars.visual_mode) {
@@ -587,6 +637,127 @@ int getTextAttrLine(int row, chtype **text) {
 
     nchars = mvwinchnstr(result_panel, row, 0, *text, min(RESULT_COLS-1, COLS-1));
     return nchars;
+}
+
+int getTextLine(int row, char **text, int max_size) 
+{
+    int i, size, nchars;
+    chtype *attr_text;
+
+    getPanelDimensions();
+    attr_text = (chtype *)malloc(min(RESULT_COLS-1, COLS-1) * sizeof(chtype));
+    if (attr_text == NULL) {
+        fprintf(stderr,"getTextLine: Could not allocate memory!!\n");
+        exit(1);				
+    }
+
+    nchars = mvwinchnstr(result_panel, row, 0, attr_text, min(RESULT_COLS-1, COLS-1));
+
+    if (max_size != -1)
+    {
+        size = min(nchars, max_size);
+    }
+    else
+    {
+        size = nchars;
+    }
+
+    if (*text == NULL)
+    {
+        *text = (char *)malloc(size+1);
+        if (*text == NULL)
+        {
+            fprintf(stderr,"getTextLine: Could not allocate memory!!\n");
+            exit(1);				
+        }
+    }
+
+    for (i=0; i < size; i++)
+    {
+        (*text)[i] = attr_text[i] & A_CHARTEXT;
+    }
+    (*text)[i] = '\0';
+
+    free(attr_text);
+    return nchars;
+}
+
+int extractIPAddress(char *text, char *address1, char *address2)
+{
+    int i, pos;
+    char IP_pattern[] = "^.*[ \t]+([0-9]+[.][0-9]+[.][0-9]+[.][0-9]+).*$";
+    char IP2_pattern[] = "^.*[ \t]+([0-9]+[.][0-9]+[.][0-9]+[.][0-9]+).*[ \t]+([0-9]+[.][0-9]+[.][0-9]+[.][0-9]+).*$";
+    regex_t IP_regex;
+    regmatch_t match[3];
+    int count = 0;
+
+    // First try with two IPs
+    if (regcomp(&IP_regex, IP2_pattern, REG_EXTENDED))
+    {
+        fprintf(stderr, "extractIPAddress: Can't compile regular expression for 2 IP addresses\n");
+        exit(EXIT_FAILURE);
+    }
+    if (!regexec(&IP_regex, text, 3, match, 0))
+    {
+        count = 2;
+    }
+    else
+    {
+        // Second try with one IP
+        regfree(&IP_regex);
+        if (regcomp(&IP_regex, IP_pattern, REG_EXTENDED))
+        {
+            fprintf(stderr, "extractIPAddress: Can't compile regular expression for 1 IP address\n");
+            exit(EXIT_FAILURE);
+        }
+        if (!regexec(&IP_regex, text, 2, match, 0))
+        {
+            count = 1;
+        }
+        else
+        {
+            regfree(&IP_regex);
+            return 0;
+        }
+    }
+
+    if (match[1].rm_so == -1)
+    {
+        fprintf(stderr, "extractIPAddress: No match saved!\n");
+        exit(EXIT_FAILURE);
+    }
+    if (match[1].rm_eo - match[1].rm_so >= INET_ADDRSTRLEN)
+    {
+        fprintf(stderr, "extractIPAddress: Extracted IP address 1 is too long!!\n");
+        exit(EXIT_FAILURE);
+    }
+    for (i=0, pos=match[1].rm_so; pos < match[1].rm_eo; i++, pos++)
+    {
+        address1[i] = text[pos];
+    }
+    address1[i] = '\0';
+
+    if (count == 2)
+    {
+        if (match[2].rm_so == -1)
+        {
+            regfree(&IP_regex);
+            return 1;
+        }
+        if (match[2].rm_eo - match[2].rm_so >= INET_ADDRSTRLEN)
+        {
+            fprintf(stderr, "extractIPAddress: Extracted IP address 2 is too long!!\n");
+            exit(EXIT_FAILURE);
+        }
+        for (i=0, pos=match[2].rm_so; pos < match[2].rm_eo; i++, pos++)
+        {
+            address2[i] = text[pos];
+        }
+        address2[i] = '\0';
+    }
+
+    regfree(&IP_regex);
+    return count;
 }
 
 void clearSelection() {
@@ -976,6 +1147,89 @@ void changeView()
     // Change view
     w_globvars.view_started = time(NULL);
     w_globvars.visual_mode = new_visual_mode;
+}
+
+void UI_banIP(int ban)
+{
+    int size;
+    char *text;
+    char s_address1[INET_ADDRSTRLEN], s_address2[INET_ADDRSTRLEN];
+    int n_IPs;
+    char *ip2ban = NULL;
+    in_addr_t address1, address2;
+    char m[100];
+
+
+    // Any row selected?
+    if (result_selected_row < 0)
+    {
+        return;
+    }
+    // Get selected text
+    text = NULL;
+    size = getTextLine(result_selected_row, &text, -1);
+    if (size)
+    {
+        n_IPs = extractIPAddress(text, s_address1, s_address2);
+        free(text);
+        if (!n_IPs)
+        {
+            fprintf(stderr, "\nNO HAY NINGUNA IP!!!!\n");
+            exit(EXIT_FAILURE);
+        }
+
+        inet_pton(AF_INET, s_address1, &address1);
+        if (externalIP(address1))
+        {
+            ip2ban = s_address1;
+        }
+        else
+        {
+            if (n_IPs == 2)
+            {
+                inet_pton(AF_INET, s_address2, &address2);
+                if (externalIP(address2))
+                {
+                    ip2ban = s_address2;
+                }
+            }
+        }
+
+        if (ip2ban != NULL)
+        {
+            if (ban)
+            {
+                if (banIP(ip2ban))
+                {
+                    sprintf(m, "IP address %s has been banned!!", ip2ban);
+                    writeLineOnInfo(m, 0, 1, 5);
+                }
+                else
+                {
+                    sprintf(m, "Ups! Something failed when trying to ban IP address %s!!", ip2ban);
+                    writeLineOnInfo(m, 0, 1, 5);
+                }
+            }
+            else
+            {
+                if (unbanIP(ip2ban))
+                {
+                    sprintf(m, "IP address %s has been UNbanned!!", ip2ban);
+                    writeLineOnInfo(m, 0, 1, 5);
+                }
+                else
+                {
+                    sprintf(m, "Ups! Something failed when trying to unban IP address %s!!", ip2ban);
+                    writeLineOnInfo(m, 0, 1, 5);
+                }
+            }
+        }
+        else
+        {
+            // Internal address. Can't ban
+            writeLineOnInfo("Can't ban/unban an internal address!!", 0, 1, 5);
+        }
+    }
 }
 
 void showWhoisDatabase()

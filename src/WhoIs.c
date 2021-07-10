@@ -332,7 +332,7 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
  	/***************************  DEBUG ****************************/
 	{
 		char m[255];
-		sprintf(m, "Llamadas a whois: %0u  Nº items en BD: %0u          ", w_globvars.cont_requests, size_dict(bd_whois));
+		sprintf(m, "Llamadas a whois: %u  Nº items en BD: %u                     ", w_globvars.cont_requests, size_dict(bd_whois));
 		debugMessageXY(5, 0, m, NULL, 1);
 	}
 	/*****************************************************************/

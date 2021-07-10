@@ -1,8 +1,18 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <sys/wait.h>
 #include <ctype.h>
+#include <unistd.h>
+#include <fcntl.h>
 
+#include <Configuration.h>
 #include <misc.h>
+#include <GlobalVars.h>
+
+// EXTERNAL global vars
+extern struct const_global_vars c_globvars;
+
 
 int min(int a, int b) {
     if (a <= b) {
@@ -277,4 +287,78 @@ void s_icmp_type(uint8_t type, uint8_t code, char *buffer)
         }
     }
     strcpy(buffer, "");
+}
+
+int externalIP(in_addr_t address)
+{
+    if (address == c_globvars.own_ip_internet)
+    {
+        return 0;
+    }
+
+    if ((address & c_globvars.own_mask_intranet) == c_globvars.network_intranet)
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+int banIP(char *address)
+{
+    int pid;
+    int status;
+
+    // Create a child to execute iptables
+    pid = fork();
+    if (pid == -1) 
+    {
+		perror("banIP: ");
+		exit(EXIT_FAILURE);
+    }
+
+    if (!pid)
+    {
+        execlp("iptables", "iptables", "-I", CHAIN_IPTABLES_BLACKLIST, "-p", "all", "--src", address, "-j", "DROP", NULL);
+        exit(EXIT_FAILURE);
+    }
+
+    // Wait until command child finished
+    while (wait(&status) != pid);
+
+    return WIFEXITED(status) == 0;
+}
+
+int unbanIP(char *address)
+{
+    int pid;
+    int status;
+    int fd;
+
+    // Create a child to execute iptables
+    pid = fork();
+    if (pid == -1) 
+    {
+		perror("banIP: ");
+		exit(EXIT_FAILURE);
+    }
+
+    if (!pid)
+    {
+        fd = open("/dev/null", O_WRONLY);
+        if (fd != -1)
+        {
+            close(1);
+            close(2);
+            dup(fd);
+            dup(fd);
+        }
+        execlp("iptables", "iptables", "-D", CHAIN_IPTABLES_BLACKLIST, "-p", "all", "--src", address, "-j", "DROP", NULL);
+        exit(EXIT_FAILURE);
+    }
+
+    // Wait until command child finished
+    while (wait(&status) != pid);
+
+    return (WIFEXITED(status) && WEXITSTATUS(status) == 0);
 }

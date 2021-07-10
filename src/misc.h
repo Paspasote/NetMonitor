@@ -21,6 +21,8 @@ int checkPairIPMask(char *s_pair, in_addr_t *address, u_int8_t *mask_byte, in_ad
 int checkRangeAddress(char *range, char *begin, char *end);
 void addressMask2Range(in_addr_t address, u_int8_t mask_byte, char *s_initial_addr, char *s_final_addr);
 void s_icmp_type(uint8_t type, uint8_t code, char *buffer);
-
+int externalIP(in_addr_t address);
+int banIP(char *address);
+int unbanIP(char *address);
 #endif
 

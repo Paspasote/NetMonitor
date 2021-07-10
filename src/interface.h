@@ -21,5 +21,5 @@ void *interface();
 void init_curses();
 void writeLineOnResult(char *text, attr_t attr, int bold);
 void writeLineOnWhois(char *text, attr_t attr, int bold);
-
+void writeLineOnInfo(char *text, attr_t attr, int highlight, int seconds);
 #endif

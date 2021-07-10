@@ -5,6 +5,8 @@
 #include <Dictionary.h>
 
 // Constants
+#define CHAIN_IPTABLES_BLACKLIST "BlackList"
+
 #define	TCP_TIMEOUT		900
 #define UDP_TIMEOUT		300
 //#define	TCP_TIMEOUT		90
