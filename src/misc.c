@@ -308,6 +308,7 @@ int banIP(char *address)
 {
     int pid;
     int status;
+    int fd;
 
     // Create a child to execute iptables
     pid = fork();
@@ -319,6 +320,14 @@ int banIP(char *address)
 
     if (!pid)
     {
+        fd = open("/dev/null", O_WRONLY);
+        if (fd != -1)
+        {
+            close(1);
+            close(2);
+            dup(fd);
+            dup(fd);
+        }
         execlp("iptables", "iptables", "-I", CHAIN_IPTABLES_BLACKLIST, "-p", "all", "--src", address, "-j", "DROP", NULL);
         exit(EXIT_FAILURE);
     }
@@ -326,7 +335,7 @@ int banIP(char *address)
     // Wait until command child finished
     while (wait(&status) != pid);
 
-    return WIFEXITED(status) == 0;
+    return (WIFEXITED(status) && WEXITSTATUS(status) == 0);
 }
 
 int unbanIP(char *address)
