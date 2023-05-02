@@ -1,6 +1,7 @@
 #ifdef DEBUG
 
 #include <stdlib.h>
+#include <string.h>
 #include <ncurses.h>
 #include <semaphore.h>
 
@@ -139,6 +140,113 @@ void debugMessageXY(int row, int col, char *message, attr_t *attr, unsigned prio
         exit(1);        
     }
     //sleep(3);
+}
+
+void debugMessageModule(int module, char *message, attr_t *attr, unsigned prioridad)
+{
+    int x, y;
+    char msg[DEBUG_COLS+1];
+    size_t i, size;
+
+    // Calculate line size of the module
+    if (module == WHOIS || module == WHOIS_EXTRA || module == INTERFACE_STATS ||
+        module == INTERFACE_STATS_EXTRA1 || module == INTERFACE_STATS_EXTRA2 ||
+        module == INTERFACE_STATS_EXTRA3)
+    {
+        size = DEBUG_COLS;
+    }
+    else
+    {
+        size = MODULE_MESSAGE_SIZE;
+    }
+
+    // Adjust message to exactly size characters
+    if (strlen(message) > size)
+    {
+        strncpy(msg, message, size);
+        msg[size] = '\0';
+    }
+    else
+    {
+        if (strlen(message) < size)
+        {
+            strcpy(msg, message);
+            for (i=strlen(message); i<size; i++)
+            {
+                strcat(msg, " ");
+            }
+        }
+        else
+        {
+            strcpy(msg, message);
+        }
+    }
+
+    // Calculate X,Y position of the module
+    switch (module)
+    {
+        case INTERNET_SNIFFER:
+            x = SNIFFER_INTERNET_THREAD_COL;
+            y = SNIFFER_THREAD_ROW;
+            break;
+        case INTRANET_SNIFFER:
+            x = SNIFFER_INTRANET_THREAD_COL;
+            y = SNIFFER_THREAD_ROW;
+            break;
+        case INTERNET_CONNECTIONS_TRACKER:
+            x = INTERNET_TRACKER_THREAD_COL;
+            y = TRACKER_THREAD_ROW;
+            break;
+        case INTERNET_CONNECTIONS_TRACKER_INFO:
+            x = INTERNET_TRACKER_THREAD_COL;
+            y = TRACKER_THREAD_ROW+1;
+            break;
+        case INTRANET_CONNECTIONS_TRACKER:
+            x = INTRANET_TRACKER_THREAD_COL;
+            y = TRACKER_THREAD_ROW;
+            break;
+        case INTRANET_CONNECTIONS_TRACKER_INFO:
+            x = INTRANET_TRACKER_THREAD_COL;
+            y = TRACKER_THREAD_ROW+1;
+            break;
+        case CONNECTIONS_PURGER:
+            x = PURGE_THREAD_COL;
+            y = PURGE_THREAD_ROW;
+            break;
+        case WHOIS:
+            x = WHOIS_THREAD_COL;
+            y = WHOIS_THREAD_ROW;
+            break;
+        case WHOIS_EXTRA:
+            x = WHOIS_THREAD_EXTRA_COL;
+            y = WHOIS_THREAD_ROW;
+            break;
+        case INTERFACE:
+            x = INTERFACE_THREAD_COL;
+            y = INTERFACE_THREAD_ROW;
+            break;
+        case INTERFACE_STATS:
+            x = INTERFACE_THREAD_COL;
+            y = INTERFACE_THREAD_STATS_ROW;
+            break;
+        case INTERFACE_STATS_EXTRA1:
+            x = INTERFACE_THREAD_COL;
+            y = INTERFACE_THREAD_STATS_ROW+1;
+            break;
+        case INTERFACE_STATS_EXTRA2:
+            x = INTERFACE_THREAD_COL;
+            y = INTERFACE_THREAD_STATS_ROW+2;
+            break;
+        case INTERFACE_STATS_EXTRA3:
+            x = INTERFACE_THREAD_COL;
+            y = INTERFACE_THREAD_STATS_ROW+3;
+            break;
+        default:
+            return;
+    }
+
+    debugMessageXY(y, x, msg, attr, prioridad);
+
 }
 
 #endif

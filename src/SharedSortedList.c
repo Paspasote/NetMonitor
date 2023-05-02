@@ -353,9 +353,9 @@ int isEmpty_shared_sorted_list(shared_sorted_list l)
 	return ret;
 }
 
-unsigned size_shared_sorted_list(shared_sorted_list l)
+unsigned long size_shared_sorted_list(shared_sorted_list l)
 {
-	int ret;
+	unsigned long ret;
 
 	if (l == NULL) 
 	{

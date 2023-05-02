@@ -229,7 +229,7 @@ void PL_show_packet(struct info_packet *packet)
 void PL_show_info(int internet) {
 	double_list *list;
 	sem_t *mutex;
-
+	
 	if (w_globvars.internet_packets_buffer == NULL) {
 		return;
 	}
@@ -245,13 +245,14 @@ void PL_show_info(int internet) {
 		mutex = &w_globvars.mutex_intranet_packets;
 	}
 
-	// Show one packet and remove it
+	// Show all pending packets (packets in buffer)
 	if (sem_wait(mutex))
 	{
 		perror("PL_show_info: sem_wait with mutex packages buffer");
 		exit(1);
 	}
 	while (!isEmpty_double_list(*list)) {
+		// Show one packet and remove it
 		if (sem_post(mutex))
 		{
 			perror("PL_show_info: sem_post with mmutex packages buffer");

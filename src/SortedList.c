@@ -36,7 +36,7 @@ int isEmpty_sorted_list(sorted_list l)
 	return l->n_elements == 0;
 }
 
-unsigned size_sorted_list(sorted_list l)
+unsigned long size_sorted_list(sorted_list l)
 {
 	if (l == NULL) 
 	{

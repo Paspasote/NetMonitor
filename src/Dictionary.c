@@ -38,7 +38,7 @@ int isEmpty_dict(dictionary dict)
 	return isEmpty_sorted_list(dict->list);
 }
 
-unsigned size_dict(dictionary dict)
+unsigned long size_dict(dictionary dict)
 {
 	if (dict == NULL) 
 	{

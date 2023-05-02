@@ -32,6 +32,6 @@ void writeDatabaseWhois();
 struct t_value * findAdressWhois(uint32_t ip_address);
 void updateWhoisInfo(uint32_t address, char *country, char *netname);
 void showDatabase(int first_register, int max_registers);
-int numberOfWhoisRegisters();
+unsigned long numberOfWhoisRegisters();
 
 #endif

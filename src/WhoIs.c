@@ -29,7 +29,7 @@
 #include <WhoIs.h>
 
 // EXTERNAL Global vars
-struct write_global_vars w_globvars;
+extern struct write_global_vars w_globvars;
 
 // Global vars
 dictionary bd_whois = NULL;
@@ -114,9 +114,9 @@ void *whoIs(void *ptr_paramt)
             cont_repetidos++;
             /***************************  DEBUG ****************************/
             {
-                char m[255];
-                sprintf(m, "Sin datos: %5d   Sin rango: %5d    Mal dirs: %5d  Repetidos: %5d    ", cont_fallos1, cont_fallos2, cont_fallos3, cont_repetidos);
-                debugMessageXY(6, 0, m, NULL, 1);
+                char m[150];
+                sprintf(m, "Sin datos: %-5d  Sin rango: %-5d  Mal dirs: %-5d  Repetidos: %-5d", cont_fallos1, cont_fallos2, cont_fallos3, cont_repetidos);
+			    debugMessageModule(WHOIS_EXTRA, m, NULL, 1);
             }
 #endif
             /*****************************************************************/
@@ -249,8 +249,8 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
                     p = strtok(p, delim2);
                     if (p != NULL) {
                         // Got it! Save country code
-                        strncpy(local_country, p, MAX_LEN_COUNTRY+1);
-                        if (strlen(p) >= MAX_LEN_COUNTRY)
+                        strncpy(local_country, p, MAX_LEN_COUNTRY);
+                        if (strlen(p) > MAX_LEN_COUNTRY)
                         {
                             local_country[MAX_LEN_COUNTRY] = '\0';
                         }
@@ -272,7 +272,7 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
                         if (noCaseComp(p, "private-address-"))
                         {
                             strncpy(local_netname, "INTRANET", MAX_LEN_NETNAME);
-                            if (strlen("INTRANET") >= MAX_LEN_NETNAME)
+                            if (strlen("INTRANET") > MAX_LEN_NETNAME)
                             {
                                 local_netname[MAX_LEN_NETNAME] = '\0';
                             }
@@ -280,7 +280,7 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
                         else
                         {
                             strncpy(local_netname, p, MAX_LEN_NETNAME);
-                            if (strlen(p) >= MAX_LEN_NETNAME)
+                            if (strlen(p) > MAX_LEN_NETNAME)
                             {
                                 local_netname[MAX_LEN_NETNAME] = '\0';
                             }
@@ -301,7 +301,7 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
                     if (p != NULL) {
                         // Got it! Save owner name
                         strncpy(local_netname, p, MAX_LEN_NETNAME);
-                        if (strlen(p) >= MAX_LEN_NETNAME)
+                        if (strlen(p) > MAX_LEN_NETNAME)
                         {
                             local_netname[MAX_LEN_NETNAME] = '\0';
                         }
@@ -331,9 +331,9 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
 #ifdef DEBUG
  	/***************************  DEBUG ****************************/
 	{
-		char m[255];
-		sprintf(m, "Llamadas a whois: %u  Nº items en BD: %u                     ", w_globvars.cont_requests, size_dict(bd_whois));
-		debugMessageXY(5, 0, m, NULL, 1);
+		char m[150];
+		sprintf(m, "Llamadas a whois: %-8u  Nº items en BD: %-8lu", w_globvars.cont_requests, numberOfWhoisRegisters());
+		debugMessageModule(WHOIS, m, NULL, 1);
 	}
 	/*****************************************************************/
 #endif
@@ -351,9 +351,9 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
         cont_fallos1++;
         /***************************  DEBUG ****************************/
         {
-            char m[255];
-            sprintf(m, "Sin datos: %5d   Sin rango: %5d    Mal dirs: %5d  Repetidos: %5d                        ", cont_fallos1, cont_fallos2, cont_fallos3, cont_repetidos);
-            debugMessageXY(6, 0, m, NULL, 1);
+            char m[150];
+            sprintf(m, "Sin datos: %-5d  Sin rango: %-5d  Mal dirs: %-5d  Repetidos: %-5d", cont_fallos1, cont_fallos2, cont_fallos3, cont_repetidos);
+		    debugMessageModule(WHOIS_EXTRA, m, NULL, 1);
         }
         /*****************************************************************/
         fprintf(f, "%s: Sin datos\n", ip_src);
@@ -370,9 +370,9 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
         cont_fallos2++;
         /***************************  DEBUG ****************************/
         {
-            char m[255];
-            sprintf(m, "Sin datos: %5d   Sin rango: %5d  (%s)  Mal dirs: %5d  Repetidos: %5d     ", cont_fallos1, cont_fallos2, ip_src, cont_fallos3, cont_repetidos);
-            debugMessageXY(6, 0, m, NULL, 1);
+            char m[150];
+            sprintf(m, "Sin datos: %-5d  Sin rango: %-5d  Mal dirs: %-5d  Repetidos: %-5d", cont_fallos1, cont_fallos2, cont_fallos3, cont_repetidos);
+		    debugMessageModule(WHOIS_EXTRA, m, NULL, 1);
         }
         /*****************************************************************/
         fprintf(f, "%s: Sin rango\n", ip_src);
@@ -389,9 +389,9 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
         cont_fallos3++;
         /***************************  DEBUG ****************************/
         {
-            char m[255];
-            sprintf(m, "Sin datos: %5d   Sin rango: %5d    Mal dirs: %5d  Repetidos: %5d                          ", cont_fallos1, cont_fallos2, cont_fallos3, cont_repetidos);
-            debugMessageXY(6, 0, m, NULL, 1);
+            char m[150];
+            sprintf(m, "Sin datos: %-5d  Sin rango: %-5d  Mal dirs: %-5d  Repetidos: %-5d", cont_fallos1, cont_fallos2, cont_fallos3, cont_repetidos);
+		    debugMessageModule(WHOIS_EXTRA, m, NULL, 1);
         }
         /*****************************************************************/
         fprintf(f, "%s: Rango de direcciones incorrecto\n", ip_src);
@@ -406,9 +406,9 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
         cont_fallos3++;
         /***************************  DEBUG ****************************/
         {
-            char m[255];
-            sprintf(m, "Sin datos: %5d   Sin rango: %5d    Mal dirs: %5d  Repetidos: %5d                         ", cont_fallos1, cont_fallos2, cont_fallos3, cont_repetidos);
-            debugMessageXY(6, 0, m, NULL, 1);
+            char m[150];
+            sprintf(m, "Sin datos: %-5d  Sin rango: %-5d  Mal dirs: %-5d  Repetidos: %-5d", cont_fallos1, cont_fallos2, cont_fallos3, cont_repetidos);
+		    debugMessageModule(WHOIS_EXTRA, m, NULL, 1);
         }
         /*****************************************************************/
         fprintf(f, "%s: Rango de direcciones incorrecto\n", ip_src);
@@ -484,7 +484,7 @@ void updateWhoisInfo(uint32_t address, char *country, char *netname)
         }
         strcpy(country, local_country);
         strncpy(netname, local_netname, MAX_VISIBLE_NETNAME);
-        if (strlen(local_netname) >= MAX_VISIBLE_NETNAME)
+        if (strlen(local_netname) > MAX_VISIBLE_NETNAME)
         {
             netname[MAX_VISIBLE_NETNAME] = '\0';
         }
@@ -1069,7 +1069,7 @@ void showPair(struct value_dict *info, int current_register)
 	struct tm *t;
 	char s_time[20];
    	char s_initial_address[INET_ADDRSTRLEN], s_final_address[INET_ADDRSTRLEN];
-	char line[WHOIS_COLS+1];
+	char line[255];
 
     // Get element (pair)
     key = (struct t_key *)info->key;
@@ -1088,9 +1088,9 @@ void showPair(struct value_dict *info, int current_register)
    	writeLineOnWhois(line, COLOR_PAIR(0), 0);
 }
 
-int numberOfWhoisRegisters()
+unsigned long numberOfWhoisRegisters()
 {
-    int ret;
+    unsigned long ret;
 
     if (sem_wait(&w_globvars.mutex_bd_whois)) 
     {

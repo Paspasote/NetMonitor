@@ -56,7 +56,7 @@ CXXFLAGS := -pthread
 CXXFLAGS_DEBUG := -ggdb -pthread
 # C/C++ flags
 CPPFLAGS := $(INC_FLAGS) -Wall -Wextra -pedantic
-CPPFLAGS_DEBUG := $(INC_FLAGS) -Wall -Wextra -pedantic -DDEBUG=1
+CPPFLAGS_DEBUG := $(INC_FLAGS) -Wall -Wextra -pedantic -DDEBUG=2
 # linker flags
 LDFLAGS :=
 LDFLAGS_DEBUG := -ggdb

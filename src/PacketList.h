@@ -16,9 +16,9 @@
 
 struct info_packet 
 {
-	time_t	time;						/* Time of this package */
+	time_t	time;						/* Time of this packet */
 
-	unsigned n_bytes;					/* Size of this package */
+	unsigned n_bytes;					/* Size of this packet */
 
 	uint8_t  ether_dhost[ETH_ALEN];		/* destination eth addr */
   	uint8_t  ether_shost[ETH_ALEN];		/* source ether addr    */

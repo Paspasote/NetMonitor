@@ -33,9 +33,11 @@ extern double_list intranet_packets_buffer;
 
 int main(int argc, char *argv[])
 {
-	pthread_t thread_sniffer_internet, thread_sniffer_intranet, thread_conn_tracker, thread_conn_purge, thread_interface;
+	pthread_t thread_sniffer_internet, thread_sniffer_intranet, thread_conn_tracker_internet;
+	pthread_t thread_conn_tracker_intranet, thread_conn_purge, thread_interface;
 	struct ifaddrs *ifaddr, *ifa;
-	int i, internet, intranet;
+	int i;
+	int is_internet[2];
 	int internet_exist = 0, intranet_exist = 0;
 
 	// Check number of parameters 
@@ -90,8 +92,10 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "%s: Can't get information from intranet device %s.\n", argv[0], argv[2]);
 		exit(EXIT_FAILURE);
 	}
+
 /*
 	{
+		// This debug code shows the network devices information
 		char s_ip_internet[INET_ADDRSTRLEN], s_netmask_internet[INET_ADDRSTRLEN];
 		char s_ip_intranet[INET_ADDRSTRLEN], s_netmask_intranet[INET_ADDRSTRLEN];
 		
@@ -108,6 +112,7 @@ int main(int argc, char *argv[])
 		exit(EXIT_SUCCESS);
 	}
 */
+
 	// Get start time
 	c_globvars.monitor_started = time(NULL);
 	
@@ -228,11 +233,15 @@ int main(int argc, char *argv[])
         return 1;
     }
 #ifdef DEBUG
-   	if (sem_init(&w_globvars.mutex_am, 0, 1))
+   	if (sem_init(&w_globvars.mutex_debug_stats, 0, 1))
     {       
-        fprintf(stderr, "%s: Couldn't create mutex_am semaphore!!!!", argv[0]);
+        fprintf(stderr, "%s: Couldn't create mutex_debug_stats semaphore!!!!", argv[0]);
         return 1;
     }
+	w_globvars.internet_packets_processed = 0;
+	w_globvars.intranet_packets_processed = 0;
+	w_globvars.internet_packets_purged = 0;
+	w_globvars.intranet_packets_purged = 0;
 	w_globvars.allocated_config = 0;
 	w_globvars.allocated_packets_inbound = 0;
 	w_globvars.allocated_packets_outbound = 0;
@@ -257,9 +266,9 @@ int main(int argc, char *argv[])
 	// Get starting time
 	w_globvars.view_started = time(NULL);
 
-	// Create interrnet sniffer thread
-	internet = 1;
-	if (pthread_create(&thread_sniffer_internet, NULL, sniffer, &internet))
+	// Create internet sniffer thread
+	is_internet[0] = 1;
+	if (pthread_create(&thread_sniffer_internet, NULL, sniffer, is_internet))
 	{
 		fprintf(stderr, "%s: Couldn't create internet sniffer thread!!!!", argv[0]);
 		return 1;
@@ -268,19 +277,29 @@ int main(int argc, char *argv[])
 	// Create intranet sniffer thread
 	if (argv[2] != NULL)
 	{
-		intranet = 0;
-		if (pthread_create(&thread_sniffer_intranet, NULL, sniffer, &intranet))
+		is_internet[1]= 0;
+		if (pthread_create(&thread_sniffer_intranet, NULL, sniffer, is_internet+1))
 		{
 			fprintf(stderr, "%s: Couldn't create intranet sniffer thread!!!!", argv[0]);
 			return 1;
 		}
 	}
 
-	// Create connection tracker thread
-	if (pthread_create(&thread_conn_tracker, NULL, connection_tracker, NULL))
+	// Create internet connection tracker thread
+	if (pthread_create(&thread_conn_tracker_internet, NULL, connection_tracker, is_internet))
 	{
-		fprintf(stderr, "%s: Couldn't create connection tracker thread!!!!", argv[0]);
+		fprintf(stderr, "%s: Couldn't create internet connection tracker thread!!!!", argv[0]);
 		return 1;
+	}
+
+	// Create intranet sniffer thread
+	if (argv[2] != NULL)
+	{
+		if (pthread_create(&thread_conn_tracker_intranet, NULL, connection_tracker, is_internet+1))
+		{
+			fprintf(stderr, "%s: Couldn't create intranet connection tracker thread!!!!", argv[0]);
+			return 1;
+		}
 	}
 
 	// Create purge connections thread
@@ -300,12 +319,14 @@ int main(int argc, char *argv[])
 	// Wait until interface thread finish
 	pthread_detach(thread_sniffer_internet);
 	pthread_detach(thread_sniffer_intranet);
-	pthread_detach(thread_conn_tracker);
+	pthread_detach(thread_conn_tracker_internet);
+	pthread_detach(thread_conn_tracker_intranet);
 	pthread_detach(thread_conn_purge);
 	pthread_join(thread_interface, NULL);
 	pthread_cancel(thread_sniffer_internet);
 	pthread_cancel(thread_sniffer_intranet);
-	pthread_cancel(thread_conn_tracker);
+	pthread_cancel(thread_conn_tracker_internet);
+	pthread_cancel(thread_conn_tracker_intranet);
 	pthread_cancel(thread_conn_purge);
 
 	// Destroy sempahores
@@ -322,7 +343,7 @@ int main(int argc, char *argv[])
 	sem_destroy(&w_globvars.mutex_cont_requests);
 	sem_destroy(&w_globvars.mutex_cont_whois_threads);
 #ifdef DEBUG
-	sem_destroy(&w_globvars.mutex_am);
+	sem_destroy(&w_globvars.mutex_debug_stats);
 #endif
 
 	// Free allocated memory

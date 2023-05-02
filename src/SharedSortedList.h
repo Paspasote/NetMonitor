@@ -24,7 +24,7 @@ typedef struct info_shared_sorted_list {
 	sem_t mutex_list;
 	struct node_shared_sorted_list *header;
 	struct node_shared_sorted_list *tail;
-	unsigned n_elements;
+	unsigned long n_elements;
 	int (*f_compare)(void *, void *);
 } *shared_sorted_list;
 
@@ -97,7 +97,7 @@ int isEmpty_shared_sorted_list(shared_sorted_list l);
    ERROR: If list is not initialized
 */
 
-unsigned size_shared_sorted_list(shared_sorted_list l);
+unsigned long size_shared_sorted_list(shared_sorted_list l);
 /* NEEDS: A list already initialized
    RETURNS: The number of elements in the list
    ERROR: If list is not initialized

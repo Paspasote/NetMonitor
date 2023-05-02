@@ -94,29 +94,44 @@ void DV_updateList()
             node = firstNode_shared_sorted_list(hash_table[i]);
             while (node != NULL) 
 			{
-				// Allocate memory for this connection
-				info = (struct DV_info *) malloc(sizeof(struct DV_info));
-				if (info == NULL) 
+				// Read access to connection node is needed
+				if (requestReadNode_shared_sorted_list(node))
 				{
-					fprintf(stderr,"DV_updateList: Could not allocate memory!!\n");
-					exit(1);				
+					// Allocate memory for this connection
+					info = (struct DV_info *) malloc(sizeof(struct DV_info));
+					if (info == NULL) 
+					{
+						fprintf(stderr,"DV_updateList: Could not allocate memory!!\n");
+						exit(1);				
+					}
+
+					// Save the connection info
+					info->conn_node = node;
+					info->conn_list = hash_table[i];
+					strcpy(info->country, "");
+					strcpy(info->netname, "");
+					strcpy(info->flags, "?    ");
+					info->iptable_rule = 0;
+					info->stablished = 0;
+
+
+
+					// Insert the new connection in the list
+					insert_sorted_list(w_globvars.DV_l, info);
+
+					// Leave read access
+					leaveReadNode_shared_sorted_list(node);
+
+					// Next node
+					// We don't leave node's access because node view is pointing to this node connection
+					node = nextNode_shared_sorted_list(hash_table[i], node, 0);
 				}
-
-                // Save the connection info
-				info->conn_node = node;
-				info->conn_list = hash_table[i];
-				strcpy(info->country, "");
-				strcpy(info->netname, "");
-				strcpy(info->flags, "?    ");
-				info->iptable_rule = 0;
-				info->stablished = 0;
-
-				// Insert the new connection in the list
-				insert_sorted_list(w_globvars.DV_l, info);
-
-				// Next node
-				// We don't leave node's access because node view is pointing to this node connection
-				node = nextNode_shared_sorted_list(hash_table[i], node, 0);
+				else
+				{
+					// Connection has been removed.
+					// Next node
+					node = nextNode_shared_sorted_list(hash_table[i], node, 1);
+				}
             }
         }
     }
@@ -132,13 +147,13 @@ void DV_freeRequests(struct DV_info *info, shared_sorted_list conn_list, struct 
 	info->conn_node = NULL;
 	leaveNode_shared_sorted_list(conn_list, conn_node);
 
-#if DEBUG > 1
+#ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	{
-		char m[255];
+		char m[150];
 
-		sprintf(m, "Interface: ShowElement finished                                                          ");
-		debugMessageXY(INTERFACE_THREAD_ROW, INTERFACE_THREAD_COL, m, NULL, 1);
+		sprintf(m, "Interface: ShowElement finished");
+		debugMessageModule(INTERFACE, m, NULL, 1);
 	}
 #endif
 
@@ -162,13 +177,13 @@ void DV_ShowElement(void *data, void *param)
 	struct node_shared_sorted_list *conn_node;
 	shared_sorted_list conn_list;
 
-#if DEBUG > 1
+#ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	{
-		char m[255];
+		char m[150];
 
-		sprintf(m, "Interface: ShowElement start...                                                          ");
-		debugMessageXY(INTERFACE_THREAD_ROW, INTERFACE_THREAD_COL, m, NULL, 1);
+		sprintf(m, "Interface: ShowElement start...");
+		debugMessageModule(INTERFACE, m, NULL, 1);
 	}
 #endif
 
@@ -176,24 +191,19 @@ void DV_ShowElement(void *data, void *param)
 	conn_node = info->conn_node;
 	conn_list = info->conn_list;
 
-#if DEBUG > 1
+#ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	{
-		char m[255];
+		char m[150];
 
-		sprintf(m, "Interface: ShowElement before request read access to connection node...                  ");
-		debugMessageXY(INTERFACE_THREAD_ROW, INTERFACE_THREAD_COL, m, NULL, 1);
+		sprintf(m, "Interface: ShowElement before request read access to connection node...");
+		debugMessageModule(INTERFACE, m, NULL, 1);
 	}
 #endif
 
 	// Read access to connection node
 	if (!requestReadNode_shared_sorted_list(conn_node))
 	{
-#ifdef DEBUG
-		// This should never happen
-		fprintf(stderr, "DV_ShowElement: Connection pointed by node view was removed!!");
-		exit(EXIT_FAILURE);
-#endif
 		DV_freeRequests(info, conn_list, conn_node, 0);
 		return;
 	}
@@ -204,13 +214,13 @@ void DV_ShowElement(void *data, void *param)
 		return;
 	}	
 
-#if DEBUG > 1
+#ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	{
-		char m[255];
+		char m[150];
 
-		sprintf(m, "Interface: ShowElement after request read access to connection node...                   ");
-		debugMessageXY(INTERFACE_THREAD_ROW, INTERFACE_THREAD_COL, m, NULL, 1);
+		sprintf(m, "Interface: ShowElement after request read access to connection node...");
+		debugMessageModule(INTERFACE, m, NULL, 1);
 	}
 #endif
 
@@ -235,13 +245,40 @@ void DV_ShowElement(void *data, void *param)
 			if (now - conn->time >= ANY_VISIBLE_TIMEOUT) {
 				// Visibility timeout
 				DV_freeRequests(info, conn_list, conn_node, 1);
+#ifdef DEBUG
+				/***************************  DEBUG ****************************/
+				{
+					char m[150];
+
+					sprintf(m, "Interface: ShowElement finished (Visibility timeout)");
+					debugMessageModule(INTERFACE, m, NULL, 1);
+				}
+#endif
 				return;
 			}
 
 			// Check if we have to update whois conn
 			if (!strcmp(info->country, ""))
 			{
+#ifdef DEBUG
+				/***************************  DEBUG ****************************/
+				{
+					char m[150];
+
+					sprintf(m, "Interface: ShowElement ICMP - Before update Whois...");
+					debugMessageModule(INTERFACE, m, NULL, 1);
+				}
+#endif
 				updateWhoisInfo(conn->ip_src.s_addr, info->country, info->netname);
+#ifdef DEBUG
+				/***************************  DEBUG ****************************/
+				{
+					char m[150];
+
+					sprintf(m, "Interface: ShowElement ICMP - After update Whois");
+					debugMessageModule(INTERFACE, m, NULL, 1);
+				}
+#endif
 			}
 			// Check if we have to update iptables flag
 			if (now - info->iptable_rule > RULE_TIMEOUT)
@@ -258,6 +295,15 @@ void DV_ShowElement(void *data, void *param)
 			if (info->flags[FLAG_IPTABLES_POS] == '?')
 			{
 				info->iptable_rule = now;
+#ifdef DEBUG
+				/***************************  DEBUG ****************************/
+				{
+					char m[150];
+
+					sprintf(m, "Interface: ShowElement ICMP - Before get iptables action...");
+					debugMessageModule(INTERFACE, m, NULL, 1);
+				}
+#endif
 				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, conn->ip_src.s_addr, 0, 
 									   conn->ip_dst.s_addr, 0, conn->shared_info.icmp_info.type, conn->shared_info.icmp_info.code, !conn->stablished, "INPUT"))
 				{
@@ -278,6 +324,15 @@ void DV_ShowElement(void *data, void *param)
 						break;
 				}
 			}
+#ifdef DEBUG
+			/***************************  DEBUG ****************************/
+			{
+				char m[150];
+
+				sprintf(m, "Interface: ShowElement ICMP - After get iptables action...");
+				debugMessageModule(INTERFACE, m, NULL, 1);
+			}
+#endif
 			// Update Respond/Stablished flag
 			if (!conn->starting)
 			{
@@ -313,13 +368,40 @@ void DV_ShowElement(void *data, void *param)
 			if (now - conn->time >= TCP_VISIBLE_TIMEOUT) {
 				// Visibility timeout
 				DV_freeRequests(info, conn_list, conn_node, 1);
+#ifdef DEBUG
+				/***************************  DEBUG ****************************/
+				{
+					char m[150];
+
+					sprintf(m, "Interface: ShowElement finished (Visibility timeout)");
+					debugMessageModule(INTERFACE, m, NULL, 1);
+				}
+#endif
 				return;
 			}
 
 			// Check if we have to update whois info
 			if (!strcmp(info->country, ""))
 			{
+#ifdef DEBUG
+				/***************************  DEBUG ****************************/
+				{
+					char m[150];
+
+					sprintf(m, "Interface: ShowElement TCP - Before update Whois...");
+					debugMessageModule(INTERFACE, m, NULL, 1);
+				}
+#endif
 				updateWhoisInfo(conn->ip_src.s_addr, info->country, info->netname);
+#ifdef DEBUG
+				/***************************  DEBUG ****************************/
+				{
+					char m[150];
+
+					sprintf(m, "Interface: ShowElement TCP - After update Whois");
+					debugMessageModule(INTERFACE, m, NULL, 1);
+				}
+#endif
 			}
 			// Check if we have to update iptables flag
 			if (now - info->iptable_rule > RULE_TIMEOUT)
@@ -336,6 +418,15 @@ void DV_ShowElement(void *data, void *param)
 			if (info->flags[FLAG_IPTABLES_POS] == '?')
 			{
 				info->iptable_rule = now;
+#ifdef DEBUG
+				/***************************  DEBUG ****************************/
+				{
+					char m[150];
+
+					sprintf(m, "Interface: ShowElement TCP - Before get iptables action...");
+					debugMessageModule(INTERFACE, m, NULL, 1);
+				}
+#endif
 				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, conn->ip_src.s_addr, conn->shared_info.tcp_info.sport, 
 									   conn->ip_dst.s_addr, conn->shared_info.tcp_info.dport, conn->shared_info.tcp_info.flags, 0,
 									   !conn->stablished, "INPUT"))
@@ -357,6 +448,15 @@ void DV_ShowElement(void *data, void *param)
 						break;
 				}
 			}
+#ifdef DEBUG
+			/***************************  DEBUG ****************************/
+			{
+				char m[150];
+
+				sprintf(m, "Interface: ShowElement TCP - After get iptables action...");
+				debugMessageModule(INTERFACE, m, NULL, 1);
+			}
+#endif
 			// Update Respond/Stablished flag
 			if (!conn->starting)
 			{
@@ -407,13 +507,40 @@ void DV_ShowElement(void *data, void *param)
 			if (now - conn->time >= UDP_VISIBLE_TIMEOUT) {
 				// Visibility timeout
 				DV_freeRequests(info, conn_list, conn_node, 1);
+#ifdef DEBUG
+				/***************************  DEBUG ****************************/
+				{
+					char m[150];
+
+					sprintf(m, "Interface: ShowElement finished (Visibility timeout)");
+					debugMessageModule(INTERFACE, m, NULL, 1);
+				}
+#endif
 				return;
 			}
 
 			// Check if we have to update whois info
 			if (!strcmp(info->country, ""))
 			{
+#ifdef DEBUG
+				/***************************  DEBUG ****************************/
+				{
+					char m[150];
+
+					sprintf(m, "Interface: ShowElement UDP - Before update Whois...");
+					debugMessageModule(INTERFACE, m, NULL, 1);
+				}
+#endif
 				updateWhoisInfo(conn->ip_src.s_addr, info->country, info->netname);
+#ifdef DEBUG
+				/***************************  DEBUG ****************************/
+				{
+					char m[150];
+
+					sprintf(m, "Interface: ShowElement UDP - After update Whois");
+					debugMessageModule(INTERFACE, m, NULL, 1);
+				}
+#endif
 			}
 			// Check if we have to update iptables flag
 			if (now - info->iptable_rule > RULE_TIMEOUT)
@@ -430,6 +557,15 @@ void DV_ShowElement(void *data, void *param)
 			if (info->flags[FLAG_IPTABLES_POS] == '?')
 			{
 				info->iptable_rule = now;
+#ifdef DEBUG
+				/***************************  DEBUG ****************************/
+				{
+					char m[150];
+
+					sprintf(m, "Interface: ShowElement UDP - Before get iptables action...");
+					debugMessageModule(INTERFACE, m, NULL, 1);
+				}
+#endif
 				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, conn->ip_src.s_addr, conn->shared_info.udp_info.sport, 
 									   conn->ip_dst.s_addr, conn->shared_info.udp_info.dport, 0, 0, !conn->stablished, "INPUT"))
 				{
@@ -450,6 +586,15 @@ void DV_ShowElement(void *data, void *param)
 						break;
 				}
 			}
+#ifdef DEBUG
+			/***************************  DEBUG ****************************/
+			{
+				char m[150];
+
+				sprintf(m, "Interface: ShowElement UDP - After get iptables action...");
+				debugMessageModule(INTERFACE, m, NULL, 1);
+			}
+#endif
 			// Update Respond/Stablished flag
 			if (!conn->starting)
 			{
@@ -504,13 +649,13 @@ void DV_ShowElement(void *data, void *param)
 	DV_freeRequests(info, conn_list, conn_node, 1);
 	w_globvars.result_count_lines++;
 
-#if DEBUG > 1
+#ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	{
-		char m[255];
+		char m[150];
 
-		sprintf(m, "Interface: ShowElement finished                                                      ");
-		debugMessageXY(INTERFACE_THREAD_ROW, INTERFACE_THREAD_COL, m, NULL, 1);
+		sprintf(m, "Interface: ShowElement finished");
+		debugMessageModule(INTERFACE, m, NULL, 1);
 	}
 #endif
 }
@@ -554,29 +699,22 @@ int DV_Compare(void *val1, void *val2) {
 	info1 = (struct DV_info *)val1;
 	info2 = (struct DV_info *)val2;
 
-	if (requestReadNode_shared_sorted_list(info1->conn_node) &&
-	    requestReadNode_shared_sorted_list(info2->conn_node))
+	if (!requestReadNode_shared_sorted_list(info2->conn_node))
 	{
-		conn1 = info1->conn_node->info;
-		conn2 = info2->conn_node->info;
-
-		diff_time1 = now - conn1->time;
-		diff_time2 = now - conn2->time;
-
-		grade1 = conn1->hits;
-		grade2 = conn2->hits;
-
-		leaveReadNode_shared_sorted_list(info1->conn_node);
-		leaveReadNode_shared_sorted_list(info2->conn_node);
+		// The node we want to compare is removed. 
+		return 1;
 	}
-#ifdef DEBUG
-	else
-	{
-		// This should never happen
-		fprintf(stderr, "DV_Compare: Connections pointed by node view were removed!!");
-		exit(EXIT_FAILURE);
-	}
-#endif
+
+	conn1 = info1->conn_node->info;
+	conn2 = info2->conn_node->info;
+
+	diff_time1 = now - conn1->time;
+	diff_time2 = now - conn2->time;
+
+	grade1 = conn1->hits;
+	grade2 = conn2->hits;
+
+	leaveReadNode_shared_sorted_list(info2->conn_node);
 
 	if (diff_time1 == 0) {
 		grade1 = grade1 * 1000;

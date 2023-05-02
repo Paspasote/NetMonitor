@@ -190,7 +190,7 @@ int checkRangeAddress(char *range, char *begin, char *end)
         return 0;
     }
     // Got it! Save initial address
-    strncpy(begin, p, INET_ADDRSTRLEN);
+    strncpy(begin, p, INET_ADDRSTRLEN-1);
     if (strlen(p) >= INET_ADDRSTRLEN)
     {
         begin[INET_ADDRSTRLEN] = '\0';
@@ -210,8 +210,8 @@ int checkRangeAddress(char *range, char *begin, char *end)
         return 0;
     }
     // Got it! Save final address
-    strncpy(end, p, INET_ADDRSTRLEN);
-    if (strlen(p) > INET_ADDRSTRLEN)
+    strncpy(end, p, INET_ADDRSTRLEN-1);
+    if (strlen(p) >= INET_ADDRSTRLEN)
     {
         end[INET_ADDRSTRLEN] = '\0';
     }

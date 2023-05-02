@@ -7,17 +7,36 @@
 
 // Constants
 
+#define INTERNET_SNIFFER 0
+#define INTRANET_SNIFFER 1
+#define INTERNET_CONNECTIONS_TRACKER 2
+#define INTERNET_CONNECTIONS_TRACKER_INFO 3
+#define INTRANET_CONNECTIONS_TRACKER 4
+#define INTRANET_CONNECTIONS_TRACKER_INFO 5
+#define CONNECTIONS_PURGER 6
+#define WHOIS 7
+#define WHOIS_EXTRA 8
+#define INTERFACE 9
+#define INTERFACE_STATS 10
+#define INTERFACE_STATS_EXTRA1 11
+#define INTERFACE_STATS_EXTRA2 12
+#define INTERFACE_STATS_EXTRA3 13
+
 #define SNIFFER_THREAD_ROW 7
 #define SNIFFER_INTERNET_THREAD_COL 0
 #define SNIFFER_INTRANET_THREAD_COL 80
-#define TRACKER_INFO_CONN_ROW 9
-#define TRACKER_INFO_CONN_COL 0
 #define TRACKER_THREAD_ROW 8
-#define TRACKER_THREAD_COL 0
-#define PURGE_THREAD_ROW 8
+#define INTERNET_TRACKER_THREAD_COL 0
+#define INTRANET_TRACKER_THREAD_COL 80
+#define PURGE_THREAD_ROW 10
 #define PURGE_THREAD_COL 80
-#define INTERFACE_THREAD_ROW 9
+#define WHOIS_THREAD_ROW 6
+#define WHOIS_THREAD_COL 0
+#define WHOIS_THREAD_EXTRA_COL 80
+#define INTERFACE_THREAD_ROW 10
 #define INTERFACE_THREAD_COL 0
+#define INTERFACE_THREAD_STATS_ROW 2
+#define MODULE_MESSAGE_SIZE 75
 
 
 // Debug level (0 - No debug   >0 debug on)
@@ -27,7 +46,7 @@
 
 // Panel size
 
-#define DEBUG_LINES		10
+#define DEBUG_LINES		11
 #define DEBUG_COLS		250
 
 // Aspect ratio for debug panel
@@ -36,6 +55,7 @@
 void init_debug_panel();
 void debugMessage(char *message, attr_t *attr, unsigned prioridad);
 void debugMessageXY(int row, int col, char *message, attr_t *attr, unsigned prioridad);
+void debugMessageModule(int module, char *message, attr_t *attr, unsigned prioridad);
 
 #endif
 

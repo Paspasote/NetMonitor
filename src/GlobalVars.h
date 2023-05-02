@@ -14,8 +14,8 @@
 
 struct const_global_vars
 {
-    char *internet_dev;      // network device (internet size) to sniffe
-    char *intranet_dev;      // network device (intranet size) to sniffe
+    char *internet_dev;      // network device (internet side) to sniffe
+    char *intranet_dev;      // network device (intranet side) to sniffe
     in_addr_t own_ip_internet;    // IP address of internet device
     in_addr_t own_mask_internet;  // Mask address of internet device
     in_addr_t network_intranet;    // Address of intranet network
@@ -84,12 +84,14 @@ struct write_global_vars
     // Number of requests have been done to WhoIs server this day
     unsigned cont_requests;
 #ifdef DEBUG
+    unsigned long internet_packets_processed, intranet_packets_processed;
+    unsigned long internet_packets_purged, intranet_packets_purged;
     unsigned long allocated_config;
     unsigned long allocated_whois;
     unsigned long allocated_packets_inbound;
     unsigned long allocated_packets_outbound;
     unsigned long allocated_others;
-    sem_t mutex_am;
+    sem_t mutex_debug_stats;
 #endif
 };
 

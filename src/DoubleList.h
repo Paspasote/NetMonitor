@@ -12,7 +12,7 @@ struct node_double_list
 typedef struct info_double_list {
 	struct node_double_list *header;
 	struct node_double_list *tail;
-	unsigned n_elements;
+	unsigned long n_elements;
 } *double_list;
 
 // Function prototypes
@@ -27,7 +27,7 @@ int isEmpty_double_list(double_list l);
    ERROR: If list is not initialized
 */
 
-unsigned size_double_list(double_list l);
+unsigned long size_double_list(double_list l);
 /* NEEDS: A list already initialized
    RETURNS: The number of elements in the list
    ERROR: If list is not initialized

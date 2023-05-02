@@ -42,7 +42,7 @@ int isEmpty_dict(dictionary dict);
    ERROR: If dict is not initialized
 */
 
-unsigned size_dict(dictionary dict);
+unsigned long size_dict(dictionary dict);
 /* NEEDS: A dictionary already initialized
    RETURNS: The number of elements in the dict
    ERROR: If dict is not initialized

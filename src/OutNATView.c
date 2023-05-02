@@ -134,13 +134,13 @@ void ONATV_freeRequests(struct ONATV_info *info, shared_sorted_list conn_list, s
 	info->conn_node = NULL;
 	leaveNode_shared_sorted_list(conn_list, conn_node);
 
-#if DEBUG > 1
+#ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	{
-		char m[255];
+		char m[150];
 
-		sprintf(m, "Interface: ShowElement finished                                                          ");
-		debugMessageXY(INTERFACE_THREAD_ROW, INTERFACE_THREAD_COL, m, NULL, 1);
+		sprintf(m, "Interface: ShowElement finished");
+		debugMessageModule(INTERFACE, m, NULL, 1);
 	}
 #endif
 
@@ -163,13 +163,13 @@ void ONATV_ShowElement(void *data, void *param) {
 	shared_sorted_list conn_list;
 
 
-#if DEBUG > 1
+#ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	{
-		char m[255];
+		char m[150];
 
-		sprintf(m, "Interface: ShowElement start...                                                          ");
-		debugMessageXY(INTERFACE_THREAD_ROW, INTERFACE_THREAD_COL, m, NULL, 1);
+		sprintf(m, "Interface: ShowElement start...");
+		debugMessageModule(INTERFACE, m, NULL, 1);
 	}
 #endif
 
@@ -177,13 +177,13 @@ void ONATV_ShowElement(void *data, void *param) {
 	conn_node = info->conn_node;
 	conn_list = info->conn_list;
 
-#if DEBUG > 1
+#ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	{
-		char m[255];
+		char m[150];
 
-		sprintf(m, "Interface: ShowElement before request read access to connection node...                  ");
-		debugMessageXY(INTERFACE_THREAD_ROW, INTERFACE_THREAD_COL, m, NULL, 1);
+		sprintf(m, "Interface: ShowElement before request read access to connection node...");
+		debugMessageModule(INTERFACE, m, NULL, 1);
 	}
 #endif
 
@@ -205,13 +205,13 @@ void ONATV_ShowElement(void *data, void *param) {
 		return;
 	}	
 
-#if DEBUG > 1
+#ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	{
-		char m[255];
+		char m[150];
 
-		sprintf(m, "Interface: ShowElement after request read access to connection node...                   ");
-		debugMessageXY(INTERFACE_THREAD_ROW, INTERFACE_THREAD_COL, m, NULL, 1);
+		sprintf(m, "Interface: ShowElement after request read access to connection node...");
+		debugMessageModule(INTERFACE, m, NULL, 1);
 	}
 #endif
 

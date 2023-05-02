@@ -31,7 +31,7 @@ int isEmpty_double_list(double_list l)
 	return l->n_elements == 0;
 }
 
-unsigned size_double_list(double_list l)
+unsigned long size_double_list(double_list l)
 {
 	if (l == NULL) 
 	{

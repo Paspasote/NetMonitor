@@ -30,7 +30,7 @@ extern struct write_global_vars w_globvars;
 int reEntry = 0;
 int no_output = 0;
 int temp_display_seconds;
-char temp_message[255];
+char temp_message[RESULT_COLS+1];
 attr_t temp_attr;
 int temp_highlight;
 
@@ -233,10 +233,10 @@ void writeLineOnResult(char *text, attr_t attr, int highlight)
 
 void writeLineOnInfo(char *text, attr_t attr, int highlight, int seconds)
 {
-    strncpy(temp_message , text, 254);
-    if (strlen(text) > 254)
+    strncpy(temp_message , text, RESULT_COLS);
+    if (strlen(text) > RESULT_COLS)
     {
-        temp_message[254] = '\0';
+        temp_message[RESULT_COLS] = '\0';
     }
     temp_attr = attr;
     temp_highlight = highlight;
@@ -284,28 +284,45 @@ void refreshTop()
  	/***************************  DEBUG ****************************/
 	{
 		char m[255];
-        int i, cont_internet, cont_intranet, cont_internet_in, cont_internet_out, cont_intranet_in, cont_intranet_out;
+        int i;
+        unsigned long cont_internet, cont_intranet, cont_internet_in, cont_internet_out, cont_intranet_in, cont_intranet_out, total_intranet, total_internet;
+        unsigned long total_intranet_purged, total_internet_purged;
 
         /*
-        if (sem_wait(&w_globvars.mutex_am)) 
+        if (sem_wait(&w_globvars.mutex_debug_stats)) 
         {
-            perror("refreshTop: sem_wait with mutex_am");
+            perror("refreshTop: sem_wait with mutex_debug_stats");
             exit(1);
         }        
 		sprintf(m, "Config mem.: %0lu   Inbound mem.: %0lu   Outbound mem.: %0lu   Whois mem.: %0lu   Otros mem.: %0lu", w_globvars.allocated_config, w_globvars.allocated_packets_inbound, w_globvars.allocated_packets_outbound, w_globvars.allocated_whois, w_globvars.allocated_others);
-		if (sem_post(&w_globvars.mutex_am))
+		if (sem_post(&w_globvars.mutex_debug_stats))
 		{
-			perror("DV_addPacket: sem_post with mutex_am");
+			perror("refreshTop: sem_post with mutex_debug_stats");
 			exit(1);		
 		}
 		debugMessageXY(1, 0, m, NULL, 1);
         */
-        sprintf(m, "is_allow: %0u   is_warning: %0u   is_alert: %0u   is_deny: %0u   os_allow: %0u   os_warning: %0u   os_alert: %0u   os_deny: %0u",
+        sprintf(m, "is_allow: %-5u  is_warning: %-5u  is_alert: %-5u  is_deny: %-5u  os_allow: %-5u  os_warning: %-5u  os_alert: %-5u  os_deny: %-5u",
                 c_globvars.cont_is_allow, c_globvars.cont__is_warning, c_globvars.cont_is_alert, c_globvars.cont_is_deny, c_globvars.cont_os_allow, c_globvars.cont_os_warning, c_globvars.cont_os_alert, c_globvars.cont_os_deny);
-		debugMessageXY(2, 0, m, NULL, 1);        
-        sprintf(m, "oh_allow: %0u   oh_warning: %0u   oh_alert: %0u   oh_deny: %0u   Serv_alias: %0u",
+		debugMessageModule(INTERFACE_STATS, m, NULL, 1);
+        sprintf(m, "oh_allow: %-5u  oh_warning: %-5u  oh_alert: %-5u  oh_deny: %-5u  Serv_alias: %-5u",
                 c_globvars.cont_oh_allow, c_globvars.cont_oh_warning, c_globvars.cont_oh_alert, c_globvars.cont_oh_deny, c_globvars.cont_services_alias);
-		debugMessageXY(3, 0, m, NULL, 1);
+		debugMessageModule(INTERFACE_STATS_EXTRA1, m, NULL, 1);
+
+        if (sem_wait(&w_globvars.mutex_debug_stats)) 
+        {
+            perror("refreshTop: sem_wait with mutex_debug_stats");
+            exit(1);
+        }        
+        total_internet = w_globvars.internet_packets_processed;
+        total_intranet = w_globvars.intranet_packets_processed;
+        total_internet_purged = w_globvars.internet_packets_purged;
+        total_intranet_purged = w_globvars.intranet_packets_purged;
+		if (sem_post(&w_globvars.mutex_debug_stats))
+		{
+			perror("refreshTop: sem_post with mutex_debug_stats");
+			exit(1);		
+		}
 
         cont_internet = 0;
         if (w_globvars.internet_packets_buffer != NULL)
@@ -340,9 +357,12 @@ void refreshTop()
                 cont_intranet_out += size_shared_sorted_list(w_globvars.conn_intranet_out[i]);
             }
         }
-        sprintf(m, "Pending Internet Packets: %0u   Pending Intranet Packets: %0u  Internet IN: %0u  Internet OUT: %0u  Intranet IN: %0u  Intranet OUT: %0u   Whois: %0d            ", 
-                cont_internet, cont_intranet, cont_internet_in, cont_internet_out, cont_intranet_in, cont_intranet_out, numberOfWhoisRegisters());
-		debugMessageXY(4, 0, m, NULL, 1);
+        sprintf(m, "Pending Internet Packets: %-8lu  Pending Intranet Packets: %-8lu  Internet IN: %-8lu  Internet OUT: %-8lu  Intranet IN: %-8lu  Intranet OUT: %-8lu", 
+                cont_internet, cont_intranet, cont_internet_in, cont_internet_out, cont_intranet_in, cont_intranet_out);
+		debugMessageModule(INTERFACE_STATS_EXTRA2, m, NULL, 1);
+        sprintf(m, "Internet Packets processed: %-10lu  Intranet Packets processed: %-10lu  Internet Packets purged: %-10lu  Intranet Packets purged: %-10lu", 
+                total_internet, total_intranet, total_internet_purged, total_intranet_purged);
+		debugMessageModule(INTERFACE_STATS_EXTRA3, m, NULL, 1);
 	}
 	/*****************************************************************/
 #endif

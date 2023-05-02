@@ -43,7 +43,7 @@ struct connection_info {
 	struct node_shared_sorted_list *nat_node;			/* Relative NAT connection node, or NULL if there is none*/
 
 	int pointed_by_relative;	/* 1 if another node connection (relative connection) is pointing to this node, 0 in another case */
-	int pointed_by_nat;			/* 1 if another node connection (NAT connection) is pointing to this node, 0 in another case */
+	int pointed_by_nat;			/* >0 if another node connection (NAT connection) is pointing to this node, 0 in another case */
 
 //	shared_sorted_list view_list;					/* List view pointing to this connection, or NULL if there is none */
 //	struct node_shared_sorted_list *view_node;		/* Node view pointing to this connection, or NULL if there is none */

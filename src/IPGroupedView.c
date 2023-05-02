@@ -307,13 +307,13 @@ void IPG_freeRequests(struct IPG_service_info *info_service, shared_sorted_list 
 	info_service->conn_node = NULL;
 	leaveNode_shared_sorted_list(conn_list, conn_node);
 
-#if DEBUG > 1
+#ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	{
-		char m[255];
+		char m[150];
 
-		sprintf(m, "Interface: ShowElement finished                                                          ");
-		debugMessageXY(INTERFACE_THREAD_ROW, INTERFACE_THREAD_COL, m, NULL, 1);
+		sprintf(m, "Interface: ShowElement finished");
+		debugMessageModule(INTERFACE, m, NULL, 1);
 	}
 #endif
 
@@ -337,13 +337,13 @@ void IPG_ShowElementService(void *data, void *param) {
 	conn_node = info_service->conn_node;
 	conn_list = info_service->conn_list;
 
-#if DEBUG > 1
+#ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	{
-		char m[255];
+		char m[150];
 
-		sprintf(m, "Interface: ShowElement before request read access to connection node...                  ");
-		debugMessageXY(INTERFACE_THREAD_ROW, INTERFACE_THREAD_COL, m, NULL, 1);
+		sprintf(m, "Interface: ShowElement before request read access to connection node...");
+		debugMessageModule(INTERFACE, m, NULL, 1);
 	}
 #endif
 

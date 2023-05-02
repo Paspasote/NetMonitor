@@ -40,24 +40,24 @@ void catch_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *
 void *sniffer(void *ptr_paramt) {
 	pcap_t *handle=NULL;
 	int ret_loop_val;
-	int internet;
+	int is_internet;
 
-	internet = *((int *)ptr_paramt);
+	is_internet = *((int *)ptr_paramt);
 	
-	handle = set_sniffer_type(internet);
+	handle = set_sniffer_type(is_internet);
 
 	// Main loop for getting packets
 	do {	
 		// Set callback function (catch only one packet)
 		if (handle != NULL) {
-			ret_loop_val = pcap_loop(handle, 1, catch_packet, (u_char *)&internet);
+			ret_loop_val = pcap_loop(handle, 1, catch_packet, (u_char *)&is_internet);
 		}
 		else {
 			ret_loop_val = 0;
 		}
 	} while (!ret_loop_val);
 	
-	if (internet)
+	if (is_internet)
 	{
 		fprintf(stderr, "INTERNET SNIFFER THREAD HAS FINISHED!!!!!!!!\n");
 	}
@@ -65,13 +65,16 @@ void *sniffer(void *ptr_paramt) {
 	{
 		fprintf(stderr, "INTRANET SNIFFER THREAD HAS FINISHED!!!!!!!!\n");
 	}
+	
+	// Terminate all threads and process
 	exit(1);
 
+/*
 	// Close the sniffer
 	pcap_close(handle);
 
 	pthread_exit(NULL);
-
+*/
 }
 
 pcap_t * set_sniffer_type(int internet)
@@ -95,7 +98,7 @@ pcap_t * set_sniffer_type(int internet)
 			inet_ntop(AF_INET, &c_globvars.own_ip_internet, s_ownip, INET_ADDRSTRLEN);
 			inet_ntop(AF_INET, &c_globvars.own_mask_internet, s_netmask, INET_ADDRSTRLEN);
 
-			// Set filter			
+			// Set filter (no filter, because we are inspecting ALL packets)			
 			strcpy(filter_exp, "");
 
 			ll_header_type = &ll_header_type_internet;
@@ -151,7 +154,7 @@ pcap_t * set_sniffer_type(int internet)
 
 // Callback function for getting packets
 void catch_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet) 
-{	
+{
 	int internet;
 	const struct ether_header *ethernet = NULL; /* The ethernet header */
 	const struct ip *ip = NULL; /* The IP header */
@@ -167,14 +170,14 @@ void catch_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *
 
 	if (internet)
 	{
-#if DEBUG > 1
-	/***************************  DEBUG ****************************/
-	{
-		char m[255];
+#ifdef DEBUG
+		/***************************  DEBUG ****************************/
+		{
+			char m[150];
 
-		sprintf(m, "Internet sniffer: catch_packet start...");
-		debugMessageXY(SNIFFER_THREAD_ROW, SNIFFER_INTERNET_THREAD_COL, m, NULL, 1);
-	}
+			sprintf(m, "Internet sniffer: catch_packet start...");
+			debugMessageModule(INTERNET_SNIFFER, m, NULL, 1);
+		}
 #endif
 
 		if (ll_header_type_internet == 113) {
@@ -183,14 +186,14 @@ void catch_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *
 	}
 	else
 	{
-#if DEBUG > 1
-	/***************************  DEBUG ****************************/
-	{
-		char m[255];
+#ifdef DEBUG
+		/***************************  DEBUG ****************************/
+		{
+			char m[150];
 
-		sprintf(m, "Intranet sniffer: catch_packet start...");
-		debugMessageXY(SNIFFER_THREAD_ROW, SNIFFER_INTRANET_THREAD_COL, m, NULL, 1);
-	}
+			sprintf(m, "Intranet sniffer: catch_packet start...");
+			debugMessageModule(INTRANET_SNIFFER, m, NULL, 1);
+		}
 #endif
 
 		if (ll_header_type_intranet == 113) {
@@ -228,21 +231,21 @@ void catch_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *
 			break;
 	} 
 
-#if DEBUG > 1
+#ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	if (internet)
 	{
-		char m[255];
+		char m[150];
 
-		sprintf(m, "Internet sniffer: catch_packet finished     ");
-		debugMessageXY(SNIFFER_THREAD_ROW, SNIFFER_INTERNET_THREAD_COL, m, NULL, 1);
+		sprintf(m, "Internet sniffer: catch_packet finished");
+		debugMessageModule(INTERNET_SNIFFER, m, NULL, 1);
 	}
 	else
 	{
-		char m[255];
+		char m[150];
 
-		sprintf(m, "Intranet sniffer: catch_packet finished     ");
-		debugMessageXY(SNIFFER_THREAD_ROW, SNIFFER_INTRANET_THREAD_COL, m, NULL, 1);
+		sprintf(m, "Intranet sniffer: catch_packet finished");
+		debugMessageModule(INTRANET_SNIFFER, m, NULL, 1);
 	}
 	/*****************************************************************/
 #endif

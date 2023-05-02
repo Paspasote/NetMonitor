@@ -17,7 +17,7 @@ extern struct const_global_vars c_globvars;
 extern struct write_global_vars w_globvars;
 
 // Function prototypes
-void purgeConnections(int internet, int incoming);
+unsigned purgeConnections(int internet, int incoming);
 int Purge_isValidList(shared_sorted_list list, sem_t mutex);
 void Purge_freeLastConnections(void *val, void *param);
 void Purge_updateBandwidth(struct connection_info *info, time_t now);
@@ -25,20 +25,36 @@ void Purge_accumulateBytes(void *val, void *total);
 
 void *purge_connections(void *ptr_paramt) 
 {
+    unsigned intranet_count = 0, internet_count = 0;
+
 	while (1)
 	{
 		// Purge incoming internet connections
-        purgeConnections(1, 1);
+        internet_count = purgeConnections(1, 1);
 		// Purge outgoing internet connections
-        purgeConnections(1, 0);
+        internet_count += purgeConnections(1, 0);
 
 		if (c_globvars.intranet_dev != NULL)
 		{
 			// Purge incoming intranet connections
-			purgeConnections(0, 1);
+			intranet_count = purgeConnections(0, 1);
 			// Purge outgoing intranet connections
-			purgeConnections(0, 0);
+			intranet_count += purgeConnections(0, 0);
 		}
+#ifdef DEBUG
+		if (sem_wait(&w_globvars.mutex_debug_stats)) 
+        {
+            perror("connection_tracker: sem_wait with mutex_debug_stats");
+            exit(1);
+        }        
+		w_globvars.internet_packets_purged += internet_count;
+		w_globvars.intranet_packets_purged += intranet_count;
+		if (sem_post(&w_globvars.mutex_debug_stats))
+		{
+			perror("connection_tracker: sem_post with mutex_debug_stats");
+			exit(1);		
+		}
+#endif
 
         sleep(PURGE_INTERVAL);
 	}
@@ -47,7 +63,7 @@ void *purge_connections(void *ptr_paramt)
 	exit(1);
 }
 
-void purgeConnections(int internet, int incoming) 
+unsigned purgeConnections(int internet, int incoming) 
 {
     shared_sorted_list *hash_table;
     sem_t *mutex;
@@ -56,6 +72,7 @@ void purgeConnections(int internet, int incoming)
 	struct connection_info *info;
 	time_t now;
 	unsigned timeout;
+    unsigned count = 0;
 
 	// Internet or intranet packet ?
 	if (internet)
@@ -64,13 +81,13 @@ void purgeConnections(int internet, int incoming)
 		if (incoming)
 		{
 
-#if DEBUG > 1
+#ifdef DEBUG
             /***************************  DEBUG ****************************/
             {
-                char m[255];
+                char m[150];
 
-                sprintf(m, "Connection Purge: Purging incoming internet connections...           ");
-                debugMessageXY(PURGE_THREAD_ROW, PURGE_THREAD_COL, m, NULL, 1);
+                sprintf(m, "Connection Purger: Purging incoming internet connections...");
+		        debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
             }
 #endif
 
@@ -81,13 +98,13 @@ void purgeConnections(int internet, int incoming)
 		}
 		else
 		{
-#if DEBUG > 1
+#ifdef DEBUG
             /***************************  DEBUG ****************************/
             {
-                char m[255];
+                char m[150];
 
-                sprintf(m, "Connection Purge: Purging outgoing internet connections...           ");
-                debugMessageXY(PURGE_THREAD_ROW, PURGE_THREAD_COL, m, NULL, 1);
+                sprintf(m, "Connection Purger: Purging outgoing internet connections...");
+		        debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
             }
 #endif
 
@@ -102,13 +119,13 @@ void purgeConnections(int internet, int incoming)
 		// Incoming or Outgoing ?
 		if (incoming)
 		{
-#if DEBUG > 1
+#ifdef DEBUG
             /***************************  DEBUG ****************************/
             {
-                char m[255];
+                char m[150];
 
-                sprintf(m, "Connection Purge: Purging incoming intranet connections...           ");
-                debugMessageXY(PURGE_THREAD_ROW, PURGE_THREAD_COL, m, NULL, 1);
+                sprintf(m, "Connection Purger: Purging incoming intranet connections...");
+		        debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
             }
 #endif
 
@@ -119,13 +136,13 @@ void purgeConnections(int internet, int incoming)
 		}
 		else
 		{
-#if DEBUG > 1
+#ifdef DEBUG
             /***************************  DEBUG ****************************/
             {
-                char m[255];
+                char m[150];
 
-                sprintf(m, "Connection Purge: Purging outgoing intranet connections...           ");
-                debugMessageXY(PURGE_THREAD_ROW, PURGE_THREAD_COL, m, NULL, 1);
+                sprintf(m, "Connection Purger: Purging outgoing intranet connections...");
+		        debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
             }
 #endif
 
@@ -151,14 +168,14 @@ void purgeConnections(int internet, int incoming)
                 // Get info node
                 info = (struct connection_info *)node->info;
 
-#if DEBUG > 1
-                        /***************************  DEBUG ****************************/
-                        {
-                            char m[255];
+#ifdef DEBUG
+                /***************************  DEBUG ****************************/
+                {
+                    char m[150];
 
-                            sprintf(m, "Connection Purge: Before request Read Access...     ");
-                            debugMessageXY(PURGE_THREAD_ROW, PURGE_THREAD_COL, m, NULL, 1);
-                        }
+                    sprintf(m, "Connection Purger: Before request Read Access...");
+                    debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
+                }
 #endif
                 if (requestReadNode_shared_sorted_list(node))
                 {
@@ -183,23 +200,24 @@ void purgeConnections(int internet, int incoming)
                         // Before remove current node get the next one
                         node = nextNode_shared_sorted_list(hash_table[i], node, 0);
                         // Removing current node
-#if DEBUG > 1
+#ifdef DEBUG
                         /***************************  DEBUG ****************************/
                         {
-                            char m[255];
+                            char m[150];
 
-                            sprintf(m, "Connection Purge: Before purge connection...     ");
-                            debugMessageXY(PURGE_THREAD_ROW, PURGE_THREAD_COL, m, NULL, 1);
+                            sprintf(m, "Connection Purger: Before purge connection...");
+		                    debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
                         }
 #endif
                         purge_connection(hash_table[i], current_node);
-#if DEBUG > 1
+                        count++;
+#ifdef DEBUG
                         /***************************  DEBUG ****************************/
                         {
-                            char m[255];
+                            char m[150];
 
-                            sprintf(m, "Connection Purge: After purge connection...      ");
-                            debugMessageXY(PURGE_THREAD_ROW, PURGE_THREAD_COL, m, NULL, 1);
+                            sprintf(m, "Connection Purger: After purge connection...");
+		                    debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
                         }
 #endif
                     }
@@ -242,29 +260,30 @@ void purgeConnections(int internet, int incoming)
                     // Next node
                     node = nextNode_shared_sorted_list(hash_table[i], node, 1);
                 }
-#if DEBUG > 1
+#ifdef DEBUG
                 /***************************  DEBUG ****************************/
                 {
-                    char m[255];
+                    char m[150];
 
-                    sprintf(m, "Connection Purge: next node...                        ");
-                    debugMessageXY(PURGE_THREAD_ROW, PURGE_THREAD_COL, m, NULL, 1);
+                    sprintf(m, "Connection Purger: next node...");
+		            debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
                 }
 #endif
 
             }
         }
     }
-#if DEBUG > 1
+#ifdef DEBUG
     /***************************  DEBUG ****************************/
     {
-        char m[255];
+        char m[150];
 
-        sprintf(m, "Connection Purge: finished                                           ");
-        debugMessageXY(PURGE_THREAD_ROW, PURGE_THREAD_COL, m, NULL, 1);
+        sprintf(m, "Connection Purger: finished");
+		debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
     }
 #endif
 
+    return count;
 }
 
 void purge_connection(shared_sorted_list list, struct node_shared_sorted_list *node)
@@ -273,13 +292,13 @@ void purge_connection(shared_sorted_list list, struct node_shared_sorted_list *n
     struct node_shared_sorted_list *relative_node, *nat_node;
     shared_sorted_list relative_list, nat_list;
 
-#if DEBUG > 1
+#ifdef DEBUG
     /***************************  DEBUG ****************************/
     {
-        char m[255];
+        char m[150];
 
-        sprintf(m, "Connection tracker: Purging conn, Before request write acces to node... ");
-        debugMessageXY(TRACKER_THREAD_ROW, TRACKER_THREAD_COL, m, NULL, 1);
+        sprintf(m, "Connection purger: Purging conn, Before request write acces to node... ");
+		debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
     }
 #endif
 
@@ -314,24 +333,24 @@ void purge_connection(shared_sorted_list list, struct node_shared_sorted_list *n
     if (relative_node != NULL && relative_list != NULL)
     {
         // Yes. We have to leave access to relative node
-#if DEBUG > 1
+#ifdef DEBUG
         /***************************  DEBUG ****************************/
         {
-            char m[255];
+            char m[150];
 
-            sprintf(m, "Connection tracker: Purging conn, Before request write access to relative... ");
-            debugMessageXY(TRACKER_THREAD_ROW, TRACKER_THREAD_COL, m, NULL, 1);
+            sprintf(m, "Connection purger: Purging conn, Before request write access to relative...");
+		    debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
         }
 #endif
         if (requestWriteNode_shared_sorted_list(relative_node))
         {
-#if DEBUG > 1
+#ifdef DEBUG
             /***************************  DEBUG ****************************/
             {
-                char m[255];
+                char m[150];
 
-                sprintf(m, "Connection tracker: Purging conn, After request write access to relative...     ");
-                debugMessageXY(TRACKER_THREAD_ROW, TRACKER_THREAD_COL, m, NULL, 1);
+                sprintf(m, "Connection purger: Purging conn, After request write access to relative...");
+		        debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
             }
 #endif
             // Is relative node pointing to this node?
@@ -355,13 +374,13 @@ void purge_connection(shared_sorted_list list, struct node_shared_sorted_list *n
         leaveNode_shared_sorted_list(relative_list, relative_node);
     }
 
-#if DEBUG > 1
+#ifdef DEBUG
     /***************************  DEBUG ****************************/
     {
-        char m[255];
+        char m[150];
 
-        sprintf(m, "Connection tracker: Purging conn, Before check for relative NAT...           ");
-        debugMessageXY(TRACKER_THREAD_ROW, TRACKER_THREAD_COL, m, NULL, 1);
+        sprintf(m, "Connection purger: Purging conn, Before check for relative NAT...");
+		debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
     }
 #endif
 
@@ -369,24 +388,24 @@ void purge_connection(shared_sorted_list list, struct node_shared_sorted_list *n
     if (nat_node != NULL && nat_list != NULL)
     {
         // Yes. We have to leave access to NAT node
-#if DEBUG > 1
+#ifdef DEBUG
         /***************************  DEBUG ****************************/
         {
-            char m[255];
+            char m[150];
 
-            sprintf(m, "Connection tracker: Purging conn, Before request write access to NAT... ");
-            debugMessageXY(TRACKER_THREAD_ROW, TRACKER_THREAD_COL, m, NULL, 1);
+            sprintf(m, "Connection purger: Purging conn, Before request write access to NAT...");
+		    debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
         }
 #endif
         if (requestWriteNode_shared_sorted_list(nat_node))
         {
-#if DEBUG > 1
+#ifdef DEBUG
             /***************************  DEBUG ****************************/
             {
-                char m[255];
+                char m[150];
 
-                sprintf(m, "Connection tracker: Purging conn, After request write access to NAT...     ");
-                debugMessageXY(TRACKER_THREAD_ROW, TRACKER_THREAD_COL, m, NULL, 1);
+                sprintf(m, "Connection purger: Purging conn, After request write access to NAT...");
+		        debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
             }
 #endif
             // Is NAT node pointing to this node?
@@ -410,13 +429,13 @@ void purge_connection(shared_sorted_list list, struct node_shared_sorted_list *n
         leaveNode_shared_sorted_list(nat_list, nat_node);
     }
 
-#if DEBUG > 1
+#ifdef DEBUG
     /***************************  DEBUG ****************************/
     {
-        char m[255];
+        char m[150];
 
-        sprintf(m, "Connection tracker: Purging conn, finished                      ");
-        debugMessageXY(TRACKER_THREAD_ROW, TRACKER_THREAD_COL, m, NULL, 1);
+        sprintf(m, "Connection purger: Purging conn, finished");
+		debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
     }
 #endif
 }
