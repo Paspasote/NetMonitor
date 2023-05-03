@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <GlobalVars.h>
@@ -220,19 +221,17 @@ void incomingConnection(int internet, struct info_packet *packet)
    	unsigned single_port;
 
 #ifdef DEBUG
-	int module, module_info;
+	int module;
 	char s[9];
 
 	if (internet) 
 	{
 		module = INTERNET_CONNECTIONS_TRACKER;
-		module_info = INTERNET_CONNECTIONS_TRACKER_INFO;
 		strcpy(s, "Internet");
 	}
 	else
 	{
 		module = INTRANET_CONNECTIONS_TRACKER;
-		module_info = INTRANET_CONNECTIONS_TRACKER_INFO;
 		strcpy(s, "Intranet");
 	}
 	/***************************  DEBUG ****************************/
@@ -322,19 +321,17 @@ void outgoingConnection(int internet, struct info_packet *packet)
    	unsigned single_port;
 
 #ifdef DEBUG
-	int module, module_info;
+	int module;
 	char s[9];
 
 	if (internet) 
 	{
 		module = INTERNET_CONNECTIONS_TRACKER;
-		module_info = INTERNET_CONNECTIONS_TRACKER_INFO;
 		strcpy(s, "Internet");
 	}
 	else
 	{
 		module = INTRANET_CONNECTIONS_TRACKER;
-		module_info = INTRANET_CONNECTIONS_TRACKER_INFO;
 		strcpy(s, "Intranet");
 	}
 	/***************************  DEBUG ****************************/
@@ -973,26 +970,24 @@ void checkForRelativeOutgoingConnection(int internet, shared_sorted_list list, s
 	int start;
 
 #ifdef DEBUG
-	int module, module_info;
+	int module;
 	char s[9];
 
 	if (internet) 
 	{
 		module = INTERNET_CONNECTIONS_TRACKER;
-		module_info = INTERNET_CONNECTIONS_TRACKER_INFO;
 		strcpy(s, "Internet");
 	}
 	else
 	{
 		module = INTRANET_CONNECTIONS_TRACKER;
-		module_info = INTRANET_CONNECTIONS_TRACKER_INFO;
 		strcpy(s, "Intranet");
 	}
 	/***************************  DEBUG ****************************/
 	{
 		char m[150];
 
-		sprintf(m, "%s Connection tracker: checkForRelativeOutgoingConnection start...", s);
+		sprintf(m, "%s checkForRelativeOutgoingConnection start...", s);
 		debugMessageModule(module, m, NULL, 1);
 	}
 #endif
@@ -1000,7 +995,7 @@ void checkForRelativeOutgoingConnection(int internet, shared_sorted_list list, s
 	if (!requestReadNode_shared_sorted_list(node))
 	{
 #ifdef DEBUG
-		fprintf(stderr, "\ncheckForRelativeOutgoingConnection: ERROR 1\n");
+		fprintf(stderr, "\n%s checkForRelativeOutgoingConnection: ERROR 1\n", s);
 		exit(EXIT_FAILURE);
 #endif
 		// Someone remove this node!!!!
@@ -1011,6 +1006,15 @@ void checkForRelativeOutgoingConnection(int internet, shared_sorted_list list, s
 	{
 		// TRACKING ICMP CONNECTIONS NOT YET IMPLEMENTED
 		leaveReadNode_shared_sorted_list(node);
+#ifdef DEBUG
+		/***************************  DEBUG ****************************/
+		{
+			char m[150];
+
+			sprintf(m, "%s checkForRelativeOutgoingConnection finished (icmp)", s);
+			debugMessageModule(module, m, NULL, 1);
+		}
+#endif
 		return;
 	}
 	else 
@@ -1020,6 +1024,15 @@ void checkForRelativeOutgoingConnection(int internet, shared_sorted_list list, s
 		{
 			// Someone else already fills the relative node
 			leaveReadNode_shared_sorted_list(node);
+#ifdef DEBUG
+			/***************************  DEBUG ****************************/
+			{
+				char m[150];
+
+				sprintf(m, "%s checkForRelativeOutgoingConnection finished (someone did the job)", s);
+				debugMessageModule(module, m, NULL, 1);
+			}
+#endif
 			return;
 		}
 
@@ -1062,7 +1075,7 @@ void checkForRelativeOutgoingConnection(int internet, shared_sorted_list list, s
 				leaveNode_shared_sorted_list(list2, node_reverse);
 			}
 #ifdef DEBUG
-			fprintf(stderr, "\ncheckForRelativeOutgoingConnection: ERROR 2\n");
+			fprintf(stderr, "\n%s checkForRelativeOutgoingConnection: ERROR 2\n", s);
 			exit(EXIT_FAILURE);
 #endif
 			return;
@@ -1078,14 +1091,32 @@ void checkForRelativeOutgoingConnection(int internet, shared_sorted_list list, s
 				// Someone else already fills the relative node
 				leaveNode_shared_sorted_list(list2, node_reverse);
 				leaveWriteNode_shared_sorted_list(node);
+#ifdef DEBUG
+				/***************************  DEBUG ****************************/
+				{
+					char m[150];
+
+					sprintf(m, "%s checkForRelativeOutgoingConnection finished (someone did the job)", s);
+					debugMessageModule(module, m, NULL, 1);
+				}
+#endif
 				return;
 			}
+
+			// Set relative info to node
+			info->relative_node = node_reverse;
+			info->relative_list = list2;
+			info->starting = start;
+			info->stablished = 1;
+
+			// Leave write access node
+			leaveWriteNode_shared_sorted_list(node);
 
 			// Get relative node info
 			info_reverse = (struct connection_info *)node_reverse->info;
 
 			// We also need write access to relative node
-			// (to increment info->pointed_by_relative)
+			// (to increment info_reverse->pointed_by_relative)
 			if (requestWriteNode_shared_sorted_list(node_reverse))
 			{ 
 				// Relative node exists and can write to it
@@ -1096,10 +1127,6 @@ void checkForRelativeOutgoingConnection(int internet, shared_sorted_list list, s
 				{
 					info_reverse->starting =  0;
 				}
-				info->relative_node = node_reverse;
-				info->relative_list = list2;
-				info->starting = start;
-				info->stablished = 1; 
 #ifdef DEBUG
 				if (info_reverse->pointed_by_relative > 1)
 				{
@@ -1114,78 +1141,30 @@ void checkForRelativeOutgoingConnection(int internet, shared_sorted_list list, s
 					switch (info->ip_protocol)
 					{
 						case IPPROTO_ICMP:
-							fprintf(stderr, "\ncheckForRelativeOutgoingConnection: ERROR 3 - NODE ICMP %u %s TO %s ----> REV ICMP %u  %s TO %s\n", info->shared_info.icmp_info.type, s_ip_src, s_ip_dst, info_reverse->shared_info.icmp_info.type, s_ip_src_reverse, s_ip_dst_reverse);
+							fprintf(stderr, "\n%s checkForRelativeOutgoingConnection: ERROR 3 - NODE ICMP %u %s TO %s ----> REV ICMP %u  %s TO %s\n", s, info->shared_info.icmp_info.type, s_ip_src, s_ip_dst, info_reverse->shared_info.icmp_info.type, s_ip_src_reverse, s_ip_dst_reverse);
 							break;
 						case IPPROTO_TCP:
 							sport = info->shared_info.tcp_info.sport;
 							dport = info->shared_info.tcp_info.dport;
 							sport_reverse = info_reverse->shared_info.tcp_info.sport;
 							dport_reverse = info_reverse->shared_info.tcp_info.dport;
-							fprintf(stderr, "\ncheckForRelativeOutgoingConnection: ERROR 3 - NODE TCP  %s:%u TO %s:%u ----> REV TCP  %s:%u TO %s:%u\n", s_ip_src, sport, s_ip_dst, dport, s_ip_src_reverse, sport_reverse, s_ip_dst_reverse, dport_reverse);
+							fprintf(stderr, "\n%s checkForRelativeOutgoingConnection: ERROR 3 - NODE TCP  %s:%u TO %s:%u ----> REV TCP  %s:%u TO %s:%u\n", s, s_ip_src, sport, s_ip_dst, dport, s_ip_src_reverse, sport_reverse, s_ip_dst_reverse, dport_reverse);
 							break;
 						case IPPROTO_UDP:
 							sport = info->shared_info.udp_info.sport;
 							dport = info->shared_info.udp_info.dport;
 							sport_reverse = info_reverse->shared_info.udp_info.sport;
 							dport_reverse = info_reverse->shared_info.udp_info.dport;
-							fprintf(stderr, "\ncheckForRelativeOutgoingConnection: ERROR 3 - NODE UDP  %s:%u TO %s:%u ----> REV UDP  %s:%u TO %s:%u\n", s_ip_src, sport, s_ip_dst, dport, s_ip_src_reverse, sport_reverse, s_ip_dst_reverse, dport_reverse);
+							fprintf(stderr, "\n%s checkForRelativeOutgoingConnection: ERROR 3 - NODE UDP  %s:%u TO %s:%u ----> REV UDP  %s:%u TO %s:%u\n", s, s_ip_src, sport, s_ip_dst, dport, s_ip_src_reverse, sport_reverse, s_ip_dst_reverse, dport_reverse);
 							break;
 					}
 					exit(EXIT_FAILURE);
 				}
 #endif
-				// Relative node has its relative info pointing to node?
-				if (info_reverse->relative_node == NULL)
-				{
-					// No. We try to set relative info of relative node
-					// We need one more access to this node
-					if (requestAccessNode_shared_sorted_list(list, node))
-					{
-						// Relative info of relative node
-						// must point to this node
-						info_reverse->relative_node = node;
-						info_reverse->relative_list = list;
-						info->pointed_by_relative++;
-#ifdef DEBUG
-						if (info->pointed_by_relative > 1)
-						{
-							char s_ip_src[INET_ADDRSTRLEN], s_ip_dst[INET_ADDRSTRLEN];
-							char s_ip_src_reverse[INET_ADDRSTRLEN], s_ip_dst_reverse[INET_ADDRSTRLEN];
-							u_int16_t sport, dport, sport_reverse, dport_reverse;
-
-							inet_ntop(AF_INET, &(info->ip_src), s_ip_src, INET_ADDRSTRLEN);
-							inet_ntop(AF_INET, &(info->ip_dst), s_ip_dst, INET_ADDRSTRLEN);
-							inet_ntop(AF_INET, &(info_reverse->ip_src), s_ip_src_reverse, INET_ADDRSTRLEN);
-							inet_ntop(AF_INET, &(info_reverse->ip_dst), s_ip_dst_reverse, INET_ADDRSTRLEN);
-							switch (info->ip_protocol)
-							{
-								case IPPROTO_ICMP:
-									fprintf(stderr, "\ncheckForRelativeOutgoingConnection: ERROR 4 - REV ICMP %u %s TO %s ----> NODE ICMP %u  %s TO %s\n", info_reverse->shared_info.icmp_info.type, s_ip_src_reverse, s_ip_dst_reverse, info->shared_info.icmp_info.type, s_ip_src, s_ip_dst);
-									break;
-								case IPPROTO_TCP:
-									sport = info->shared_info.tcp_info.sport;
-									dport = info->shared_info.tcp_info.dport;
-									sport_reverse = info_reverse->shared_info.tcp_info.sport;
-									dport_reverse = info_reverse->shared_info.tcp_info.dport;
-									fprintf(stderr, "\ncheckForRelativeOutgoingConnection: ERROR 4 - REV TCP  %s:%u TO %s:%u ----> NODE TCP  %s:%u TO %s:%u\n", s_ip_src_reverse, sport_reverse, s_ip_dst_reverse, dport_reverse, s_ip_src, sport, s_ip_dst, dport);
-									break;
-								case IPPROTO_UDP:
-									sport = info->shared_info.udp_info.sport;
-									dport = info->shared_info.udp_info.dport;
-									sport_reverse = info_reverse->shared_info.udp_info.sport;
-									dport_reverse = info_reverse->shared_info.udp_info.dport;
-									fprintf(stderr, "\ncheckForRelativeOutgoingConnection: ERROR 4 - REV UDP  %s:%u TO %s:%u ----> NODE UDP  %s:%u TO %s:%u\n", s_ip_src_reverse, sport_reverse, s_ip_dst_reverse, dport_reverse, s_ip_src, sport, s_ip_dst, dport);
-									break;
-							}
-							exit(EXIT_FAILURE);
-						}
-#endif
-					}
-				}
 #if DEBUG > 4
 				if (node_reverse->nprocs-1 != info_reverse->pointed_by_nat + info_reverse->pointed_by_relative)
 				{
-					fprintf(stderr, "\ncheckForRelativeOutgoingConnection: ERROR 5\n");
+					fprintf(stderr, "\n%s checkForRelativeOutgoingConnection: ERROR 4\n", s);
 					exit(EXIT_FAILURE);
 				}
 #endif
@@ -1197,13 +1176,27 @@ void checkForRelativeOutgoingConnection(int internet, shared_sorted_list list, s
 				// Relative node exists but can't access to relative node for writing.
 				// Someone else want's to delete it
 #ifdef DEBUG
-				fprintf(stderr, "\ncheckForRelativeOutgoingConnection: ERROR 6\n");
+				fprintf(stderr, "\n%s checkForRelativeOutgoingConnection: ERROR 5\n", s);
 				exit(EXIT_FAILURE);
 #endif
+				// Request write access to node
+				if (!requestWriteNode_shared_sorted_list(node))
+				{
+					// Someone remove this node!!!!
+					leaveNode_shared_sorted_list(list2, node_reverse);
+#ifdef DEBUG
+					fprintf(stderr, "\n%s checkForRelativeOutgoingConnection: ERROR 6\n", s);
+					exit(EXIT_FAILURE);
+#endif
+					return;
+				}
+				// Reset relative info for node
 				leaveNode_shared_sorted_list(list2, node_reverse);
 				info->relative_node = NULL;
 				info->relative_list = NULL;
 				info->stablished = 0;
+				// Leave write access node
+				leaveWriteNode_shared_sorted_list(node);
 			}
 		}
 		else
@@ -1213,7 +1206,7 @@ void checkForRelativeOutgoingConnection(int internet, shared_sorted_list list, s
 			if (info->pointed_by_relative)
 			{
 				// Error. Node is pointing to a non-existing relative node
-				fprintf(stderr, "\ncheckForRelativeOutgoingConnection: ERROR 7\n");
+				fprintf(stderr, "\n%s checkForRelativeOutgoingConnection: ERROR 7\n", s);
 				exit(EXIT_FAILURE);
 			}
 #endif
@@ -1223,25 +1216,16 @@ void checkForRelativeOutgoingConnection(int internet, shared_sorted_list list, s
 			info->pointed_by_relative = 0;
 			info->stablished = 0; 
 			info->starting = 1;
+			// Leave write access node
+			leaveWriteNode_shared_sorted_list(node);
 		} 
-#if DEBUG > 4
-		if (node->nprocs-1 != info->pointed_by_nat + info->pointed_by_relative)
-		{
-			fprintf(stderr, "\ncheckForRelativeOutgoingConnection: ERROR 8\n");
-			exit(EXIT_FAILURE);
-		}
-#endif
-		// All done. Leave write access node
-		leaveWriteNode_shared_sorted_list(node);
 	}
-
-
 #ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	{
 		char m[150];
 
-		sprintf(m, "%s Connection tracker: checkForRelativeOutgoingConnection finished", s);
+		sprintf(m, "%s checkForRelativeOutgoingConnection finished", s);
 		debugMessageModule(module, m, NULL, 1);
 	}
 #endif
@@ -1260,26 +1244,24 @@ void checkForRelativeIncomingConnection(int internet, shared_sorted_list list, s
 	int start;
 
 #ifdef DEBUG
-	int module, module_info;
+	int module;
 	char s[9];
 
 	if (internet) 
 	{
 		module = INTERNET_CONNECTIONS_TRACKER;
-		module_info = INTERNET_CONNECTIONS_TRACKER_INFO;
 		strcpy(s, "Internet");
 	}
 	else
 	{
 		module = INTRANET_CONNECTIONS_TRACKER;
-		module_info = INTRANET_CONNECTIONS_TRACKER_INFO;
 		strcpy(s, "Intranet");
 	}
 	/***************************  DEBUG ****************************/
 	{
 		char m[150];
 
-		sprintf(m, "%s Connection tracker: checkForRelativeIncomingConnection start...", s);
+		sprintf(m, "%s checkForRelativeIncomingConnection start...", s);
 		debugMessageModule(module, m, NULL, 1);
 	}
 #endif
@@ -1287,7 +1269,7 @@ void checkForRelativeIncomingConnection(int internet, shared_sorted_list list, s
 	if (!requestReadNode_shared_sorted_list(node))
 	{
 #ifdef DEBUG
-		fprintf(stderr, "\ncheckForRelativeIncomingConnection: ERROR 1\n");
+		fprintf(stderr, "\n%s checkForRelativeIncomingConnection: ERROR 1\n", s);
 		exit(EXIT_FAILURE);
 #endif
 		// Someone remove this node!!!!
@@ -1298,6 +1280,15 @@ void checkForRelativeIncomingConnection(int internet, shared_sorted_list list, s
 	{
 		// TRACKING ICMP CONNECTIONS NOT YET IMPLEMENTED
 		leaveReadNode_shared_sorted_list(node);
+#ifdef DEBUG
+		/***************************  DEBUG ****************************/
+		{
+			char m[150];
+
+			sprintf(m, "%s checkForRelativeIncomingConnection finished (icmp)", s);
+			debugMessageModule(module, m, NULL, 1);
+		}
+#endif
 		return;
 	}
 	else 
@@ -1307,6 +1298,15 @@ void checkForRelativeIncomingConnection(int internet, shared_sorted_list list, s
 		{
 			// Someone else already fills the relative node
 			leaveReadNode_shared_sorted_list(node);
+#ifdef DEBUG
+			/***************************  DEBUG ****************************/
+			{
+				char m[150];
+
+				sprintf(m, "%s checkForRelativeIncomingConnection finished (someone did the job)", s);
+				debugMessageModule(module, m, NULL, 1);
+			}
+#endif
 			return;
 		}
 
@@ -1349,7 +1349,7 @@ void checkForRelativeIncomingConnection(int internet, shared_sorted_list list, s
 				leaveNode_shared_sorted_list(list2, node_reverse);
 			}
 #ifdef DEBUG
-			fprintf(stderr, "\ncheckForRelativeIncomingConnection: ERROR 2\n");
+			fprintf(stderr, "\n%s checkForRelativeIncomingConnection: ERROR 2\n", s);
 			exit(EXIT_FAILURE);
 #endif
 			return;
@@ -1365,8 +1365,26 @@ void checkForRelativeIncomingConnection(int internet, shared_sorted_list list, s
 				// Someone else already fills the relative node
 				leaveNode_shared_sorted_list(list2, node_reverse);
 				leaveWriteNode_shared_sorted_list(node);
+#ifdef DEBUG
+				/***************************  DEBUG ****************************/
+				{
+					char m[150];
+
+					sprintf(m, "%s checkForRelativeIncomingConnection finished (someone did the job)", s);
+					debugMessageModule(module, m, NULL, 1);
+				}
+#endif
 				return;
 			}
+
+			// Set relative info to node
+			info->relative_node = node_reverse;
+			info->relative_list = list2;
+			info->starting = start;
+			info->stablished = 1; 
+
+			// Leave write access node
+			leaveWriteNode_shared_sorted_list(node);
 
 			// Get relative node info
 			info_reverse = (struct connection_info *)node_reverse->info;
@@ -1383,10 +1401,6 @@ void checkForRelativeIncomingConnection(int internet, shared_sorted_list list, s
 				{
 					info_reverse->starting =  0;
 				}
-				info->relative_node = node_reverse;
-				info->relative_list = list2;
-				info->starting = start;
-				info->stablished = 1; 
 #ifdef DEBUG
 				if (info_reverse->pointed_by_relative > 1)
 				{
@@ -1401,78 +1415,30 @@ void checkForRelativeIncomingConnection(int internet, shared_sorted_list list, s
 					switch (info->ip_protocol)
 					{
 						case IPPROTO_ICMP:
-							fprintf(stderr, "\ncheckForRelativeIncomingConnection: ERROR 3 - NODE ICMP %u %s TO %s ----> REV ICMP %u  %s TO %s\n", info->shared_info.icmp_info.type, s_ip_src, s_ip_dst, info_reverse->shared_info.icmp_info.type, s_ip_src_reverse, s_ip_dst_reverse);
+							fprintf(stderr, "\n%s checkForRelativeIncomingConnection: ERROR 3 - NODE ICMP %u %s TO %s ----> REV ICMP %u  %s TO %s\n", s, info->shared_info.icmp_info.type, s_ip_src, s_ip_dst, info_reverse->shared_info.icmp_info.type, s_ip_src_reverse, s_ip_dst_reverse);
 							break;
 						case IPPROTO_TCP:
 							sport = info->shared_info.tcp_info.sport;
 							dport = info->shared_info.tcp_info.dport;
 							sport_reverse = info_reverse->shared_info.tcp_info.sport;
 							dport_reverse = info_reverse->shared_info.tcp_info.dport;
-							fprintf(stderr, "\ncheckForRelativeIncomingConnection: ERROR 3 - NODE TCP  %s:%u TO %s:%u ----> REV TCP  %s:%u TO %s:%u\n", s_ip_src, sport, s_ip_dst, dport, s_ip_src_reverse, sport_reverse, s_ip_dst_reverse, dport_reverse);
+							fprintf(stderr, "\n%s checkForRelativeIncomingConnection: ERROR 3 - NODE TCP  %s:%u TO %s:%u ----> REV TCP  %s:%u TO %s:%u\n", s, s_ip_src, sport, s_ip_dst, dport, s_ip_src_reverse, sport_reverse, s_ip_dst_reverse, dport_reverse);
 							break;
 						case IPPROTO_UDP:
 							sport = info->shared_info.udp_info.sport;
 							dport = info->shared_info.udp_info.dport;
 							sport_reverse = info_reverse->shared_info.udp_info.sport;
 							dport_reverse = info_reverse->shared_info.udp_info.dport;
-							fprintf(stderr, "\ncheckForRelativeIncomingConnection: ERROR 3 - NODE UDP  %s:%u TO %s:%u ----> REV UDP  %s:%u TO %s:%u\n", s_ip_src, sport, s_ip_dst, dport, s_ip_src_reverse, sport_reverse, s_ip_dst_reverse, dport_reverse);
+							fprintf(stderr, "\n%s checkForRelativeIncomingConnection: ERROR 3 - NODE UDP  %s:%u TO %s:%u ----> REV UDP  %s:%u TO %s:%u\n", s, s_ip_src, sport, s_ip_dst, dport, s_ip_src_reverse, sport_reverse, s_ip_dst_reverse, dport_reverse);
 							break;
 					}
 					exit(EXIT_FAILURE);
 				}
 #endif
-				// Relative node has its relative info pointing to node?				
-				if (info_reverse->relative_node == NULL)
-				{
-					// No. We try to set relative info of relative node
-					// We need one more access to this node
-					if (requestAccessNode_shared_sorted_list(list, node))
-					{
-						// Relative info of relative node
-						// must point to this node
-						info_reverse->relative_node = node;
-						info_reverse->relative_list = list;
-						info->pointed_by_relative++;
-#ifdef DEBUG
-						if (info->pointed_by_relative > 1)
-						{
-							char s_ip_src[INET_ADDRSTRLEN], s_ip_dst[INET_ADDRSTRLEN];
-							char s_ip_src_reverse[INET_ADDRSTRLEN], s_ip_dst_reverse[INET_ADDRSTRLEN];
-							u_int16_t sport, dport, sport_reverse, dport_reverse;
-
-							inet_ntop(AF_INET, &(info->ip_src), s_ip_src, INET_ADDRSTRLEN);
-							inet_ntop(AF_INET, &(info->ip_dst), s_ip_dst, INET_ADDRSTRLEN);
-							inet_ntop(AF_INET, &(info_reverse->ip_src), s_ip_src_reverse, INET_ADDRSTRLEN);
-							inet_ntop(AF_INET, &(info_reverse->ip_dst), s_ip_dst_reverse, INET_ADDRSTRLEN);
-							switch (info->ip_protocol)
-							{
-								case IPPROTO_ICMP:
-									fprintf(stderr, "\ncheckForRelativeIncomingConnection: ERROR 4 - REV ICMP %u %s TO %s ----> NODE ICMP %u  %s TO %s\n", info_reverse->shared_info.icmp_info.type, s_ip_src_reverse, s_ip_dst_reverse, info->shared_info.icmp_info.type, s_ip_src, s_ip_dst);
-									break;
-								case IPPROTO_TCP:
-									sport = info->shared_info.tcp_info.sport;
-									dport = info->shared_info.tcp_info.dport;
-									sport_reverse = info_reverse->shared_info.tcp_info.sport;
-									dport_reverse = info_reverse->shared_info.tcp_info.dport;
-									fprintf(stderr, "\ncheckForRelativeIncomingConnection: ERROR 4 - REV TCP  %s:%u TO %s:%u ----> NODE TCP  %s:%u TO %s:%u\n", s_ip_src_reverse, sport_reverse, s_ip_dst_reverse, dport_reverse, s_ip_src, sport, s_ip_dst, dport);
-									break;
-								case IPPROTO_UDP:
-									sport = info->shared_info.udp_info.sport;
-									dport = info->shared_info.udp_info.dport;
-									sport_reverse = info_reverse->shared_info.udp_info.sport;
-									dport_reverse = info_reverse->shared_info.udp_info.dport;
-									fprintf(stderr, "\ncheckForRelativeIncomingConnection: ERROR 4 - REV UDP  %s:%u TO %s:%u ----> NODE UDP  %s:%u TO %s:%u\n", s_ip_src_reverse, sport_reverse, s_ip_dst_reverse, dport_reverse, s_ip_src, sport, s_ip_dst, dport);
-									break;
-							}
-							exit(EXIT_FAILURE);
-						}
-#endif
-					}
-				}
 #if DEBUG > 4
 				if (node_reverse->nprocs-1 != info_reverse->pointed_by_nat + info_reverse->pointed_by_relative)
 				{
-					fprintf(stderr, "\ncheckForRelativeIncomingConnection: ERROR 5\n");
+					fprintf(stderr, "\n%s checkForRelativeIncomingConnection: ERROR 4\n", s);
 					exit(EXIT_FAILURE);
 				}
 #endif
@@ -1484,13 +1450,27 @@ void checkForRelativeIncomingConnection(int internet, shared_sorted_list list, s
 				// Relative node exists but can't access to relative node for writing.
 				// Someone else want's to delete it
 #ifdef DEBUG
-				fprintf(stderr, "\ncheckForRelativeIncomingConnection: ERROR 6\n");
+				fprintf(stderr, "\n%s checkForRelativeIncomingConnection: ERROR 5\n", s);
 				exit(EXIT_FAILURE);
 #endif
+				// Request write access to node
+				if (!requestWriteNode_shared_sorted_list(node))
+				{
+					// Someone remove this node!!!!
+					leaveNode_shared_sorted_list(list2, node_reverse);
+#ifdef DEBUG
+					fprintf(stderr, "\n%s checkForRelativeIncomingConnection: ERROR 6\n", s);
+					exit(EXIT_FAILURE);
+#endif
+					return;
+				}
+				// Reset relative info for node
 				leaveNode_shared_sorted_list(list2, node_reverse);
 				info->relative_node = NULL;
 				info->relative_list = NULL;
 				info->stablished = 0;
+				// Leave write access node
+				leaveWriteNode_shared_sorted_list(node);
 			}
 		}
 		else
@@ -1500,7 +1480,7 @@ void checkForRelativeIncomingConnection(int internet, shared_sorted_list list, s
 			if (info->pointed_by_relative)
 			{
 				// Error. Node is pointing to a non-existing relative node
-				fprintf(stderr, "\ncheckForRelativeIncomingConnection: ERROR 7\n");
+				fprintf(stderr, "\n%s checkForRelativeIncomingConnection: ERROR 7\n", s);
 				exit(EXIT_FAILURE);
 			}
 #endif
@@ -1510,24 +1490,16 @@ void checkForRelativeIncomingConnection(int internet, shared_sorted_list list, s
 			info->pointed_by_relative = 0;
 			info->stablished = 0; 
 			info->starting = 1;
+			// Leave write access node
+			leaveWriteNode_shared_sorted_list(node);
 		}
-#if DEBUG > 4
-	if (node->nprocs-1 != info->pointed_by_nat + info->pointed_by_relative)
-	{
-		fprintf(stderr, "\ncheckForRelativeIncomingConnection: ERROR 8\n");
-		exit(EXIT_FAILURE);
 	}
-#endif
-		// All done. Leave write access node
-		leaveWriteNode_shared_sorted_list(node);
-	}
-
 #ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	{
 		char m[150];
 
-		sprintf(m, "%s Connection tracker: checkForRelativeIncomingConnection finished", s);
+		sprintf(m, "%s checkForRelativeIncomingConnection finished", s);
 		debugMessageModule(module, m, NULL, 1);
 	}
 #endif
@@ -1543,26 +1515,24 @@ void checkForRelativeNATConnection(int internet, shared_sorted_list list, struct
 	struct node_shared_sorted_list *node_NAT;
 
 #ifdef DEBUG
-	int module, module_info;
+	int module;
 	char s[9];
 
 	if (internet) 
 	{
 		module = INTERNET_CONNECTIONS_TRACKER;
-		module_info = INTERNET_CONNECTIONS_TRACKER_INFO;
 		strcpy(s, "Internet");
 	}
 	else
 	{
 		module = INTRANET_CONNECTIONS_TRACKER;
-		module_info = INTRANET_CONNECTIONS_TRACKER_INFO;
 		strcpy(s, "Intranet");
 	}
 	/***************************  DEBUG ****************************/
 	{
 		char m[150];
 
-		sprintf(m, "%s Connection tracker: checkForRelativeNATConnection start...", s);
+		sprintf(m, "%s checkForRelativeNATConnection start...", s);
 		debugMessageModule(module, m, NULL, 1);
 	}
 #endif
@@ -1574,7 +1544,7 @@ void checkForRelativeNATConnection(int internet, shared_sorted_list list, struct
 		{
 			char m[150];
 
-			sprintf(m, "%s Connection tracker: checkForRelativeNATConnection finished", s);
+			sprintf(m, "%s checkForRelativeNATConnection finished", s);
 			debugMessageModule(module, m, NULL, 1);
 		}
 #endif
@@ -1585,7 +1555,7 @@ void checkForRelativeNATConnection(int internet, shared_sorted_list list, struct
 	if (!requestReadNode_shared_sorted_list(node))
 	{
 #ifdef DEBUG
-		fprintf(stderr, "\ncheckForRelativeNATConnection: ERROR 1\n");
+		fprintf(stderr, "\n%s checkForRelativeNATConnection: ERROR 1\n", s);
 		exit(EXIT_FAILURE);
 #endif
 		// Someone remove this node!!!!
@@ -1595,16 +1565,16 @@ void checkForRelativeNATConnection(int internet, shared_sorted_list list, struct
 	if (info->ip_protocol == IPPROTO_ICMP) 
 	{
 		// NAT ICMP CONNECTIONS NOT YET IMPLEMENTED
+		leaveReadNode_shared_sorted_list(node);
 #ifdef DEBUG
 		/***************************  DEBUG ****************************/
 		{
 			char m[150];
 
-			sprintf(m, "%s Connection tracker: checkForRelativeNATConnection finished", s);
+			sprintf(m, "%s checkForRelativeNATConnection finished (icmp)", s);
 			debugMessageModule(module, m, NULL, 1);
 		}
 #endif
-		leaveReadNode_shared_sorted_list(node);
 		return;
 	}
 
@@ -1613,6 +1583,15 @@ void checkForRelativeNATConnection(int internet, shared_sorted_list list, struct
 	{
 		// Someone else already fills the relative NAT node
 		leaveReadNode_shared_sorted_list(node);
+#ifdef DEBUG
+		/***************************  DEBUG ****************************/
+		{
+			char m[150];
+
+			sprintf(m, "%s checkForRelativeNATConnection finished (another did the job)", s);
+			debugMessageModule(module, m, NULL, 1);
+		}
+#endif
 		return;
 	}
 
@@ -1657,7 +1636,25 @@ void checkForRelativeNATConnection(int internet, shared_sorted_list list, struct
 	// Search relative NAT connection
 	if (Conn_isValidList(list2, *mutex)) 
 	{
+#ifdef DEBUG
+		/***************************  DEBUG ****************************/
+		{
+			char m[150];
+
+			sprintf(m, "%s checkForRelativeNATConnection before searching relative NAT node", s);
+			debugMessageModule(module, m, NULL, 1);
+		}
+#endif
 		node_NAT = exclusiveFind_shared_sorted_list(list2, info, compareNAT);
+#ifdef DEBUG
+		/***************************  DEBUG ****************************/
+		{
+			char m[150];
+
+			sprintf(m, "%s checkForRelativeNATConnection after searching relative NAT node", s);
+			debugMessageModule(module, m, NULL, 1);
+		}
+#endif
 	}
 
 	// Leave node read acess and request write access
@@ -1670,7 +1667,7 @@ void checkForRelativeNATConnection(int internet, shared_sorted_list list, struct
 			leaveNode_shared_sorted_list(list2, node_NAT);
 		}
 #ifdef DEBUG
-		fprintf(stderr, "\ncheckForRelativeNATConnection: ERROR 2\n");
+		fprintf(stderr, "\n%s checkForRelativeNATConnection: ERROR 2\n", s);
 		exit(EXIT_FAILURE);
 #endif
 		return;
@@ -1679,6 +1676,16 @@ void checkForRelativeNATConnection(int internet, shared_sorted_list list, struct
 	// Found it?
 	if (node_NAT != NULL)
 	{
+#ifdef DEBUG
+		/***************************  DEBUG ****************************/
+		{
+			char m[150];
+
+			sprintf(m, "%s checkForRelativeNATConnection relative NAT node found", s);
+			debugMessageModule(module, m, NULL, 1);
+		}
+#endif
+
 		// Yes. Updating its tracking information
 		// Recheck if there is a relative NAT connection or not
 		if (info->nat_node != NULL) 
@@ -1686,8 +1693,24 @@ void checkForRelativeNATConnection(int internet, shared_sorted_list list, struct
 			// Someone else already fills the relative NAT node
 			leaveNode_shared_sorted_list(list2, node_NAT);
 			leaveWriteNode_shared_sorted_list(node);
+#ifdef DEBUG
+		/***************************  DEBUG ****************************/
+		{
+			char m[150];
+
+			sprintf(m, "%s checkForRelativeNATConnection finished (another did the job)", s);
+			debugMessageModule(module, m, NULL, 1);
+		}
+#endif
 			return;
 		}
+
+		// Set relative info to node
+		info->nat_node = node_NAT;
+		info->nat_list = list2;
+
+		// Leave write access node
+		leaveWriteNode_shared_sorted_list(node);
 
 		// Get relative NAT node info
 		info_NAT = (struct connection_info *)node_NAT->info;
@@ -1699,8 +1722,6 @@ void checkForRelativeNATConnection(int internet, shared_sorted_list list, struct
 			// Relative NAT node exists and can write to it
 			// We can set relative info to node
 			info_NAT->pointed_by_nat++;
-			info->nat_node = node_NAT;
-			info->nat_list = list2;
 #ifdef DEBUG
 			if (info_NAT->pointed_by_nat > 1)
 			{
@@ -1715,79 +1736,30 @@ void checkForRelativeNATConnection(int internet, shared_sorted_list list, struct
 				switch (info->ip_protocol)
 				{
 					case IPPROTO_ICMP:
-						fprintf(stderr, "\ncheckForRelativeNATConnection: ERROR 3 - NODE ICMP %u %s TO %s ----> NAT ICMP %u  %s TO %s\n", info->shared_info.icmp_info.type, s_ip_src, s_ip_dst, info_NAT->shared_info.icmp_info.type, s_ip_src_NAT, s_ip_dst_NAT);
+						fprintf(stderr, "\n%s checkForRelativeNATConnection: ERROR 3 - NODE ICMP %u %s TO %s ----> NAT ICMP %u  %s TO %s\n", s, info->shared_info.icmp_info.type, s_ip_src, s_ip_dst, info_NAT->shared_info.icmp_info.type, s_ip_src_NAT, s_ip_dst_NAT);
 						break;
 					case IPPROTO_TCP:
 						sport = info->shared_info.tcp_info.sport;
 						dport = info->shared_info.tcp_info.dport;
 						sport_NAT = info_NAT->shared_info.tcp_info.sport;
 						dport_NAT = info_NAT->shared_info.tcp_info.dport;
-						fprintf(stderr, "\ncheckForRelativeNATConnection: ERROR 3 - NODE TCP  %s:%u TO %s:%u ----> NAT TCP  %s:%u TO %s:%u\n", s_ip_src, sport, s_ip_dst, dport, s_ip_src_NAT, sport_NAT, s_ip_dst_NAT, dport_NAT);
+						fprintf(stderr, "\n%s checkForRelativeNATConnection: ERROR 3 - NODE TCP  %s:%u TO %s:%u ----> NAT TCP  %s:%u TO %s:%u\n", s, s_ip_src, sport, s_ip_dst, dport, s_ip_src_NAT, sport_NAT, s_ip_dst_NAT, dport_NAT);
 						break;
 					case IPPROTO_UDP:
 						sport = info->shared_info.udp_info.sport;
 						dport = info->shared_info.udp_info.dport;
 						sport_NAT = info_NAT->shared_info.udp_info.sport;
 						dport_NAT = info_NAT->shared_info.udp_info.dport;
-						fprintf(stderr, "\ncheckForRelativeNATConnection: ERROR 3 - NODE UDP  %s:%u TO %s:%u ----> NAT UDP  %s:%u TO %s:%u\n", s_ip_src, sport, s_ip_dst, dport, s_ip_src_NAT, sport_NAT, s_ip_dst_NAT, dport_NAT);
+						fprintf(stderr, "\n%s checkForRelativeNATConnection: ERROR 3 - NODE UDP  %s:%u TO %s:%u ----> NAT UDP  %s:%u TO %s:%u\n", s, s_ip_src, sport, s_ip_dst, dport, s_ip_src_NAT, sport_NAT, s_ip_dst_NAT, dport_NAT);
 						break;
 				}
 				exit(EXIT_FAILURE);
 			}
 #endif
-			
-			// Relative NAT node has its relative info pointing to node?
-			if (info_NAT->nat_node == NULL)			
-			{
-				// No. We try to set relative info of relative NAT node
-				// We need one more access to this node
-				if (requestAccessNode_shared_sorted_list(list, node))
-				{
-					// Relative NAT info of relative NAT node
-					// must point to this node
-					info_NAT->nat_node = node;
-					info_NAT->nat_list = list;
-					info->pointed_by_nat++;
-#ifdef DEBUG
-					if (info->pointed_by_nat > 1)
-					{
-						char s_ip_src[INET_ADDRSTRLEN], s_ip_dst[INET_ADDRSTRLEN];
-						char s_ip_src_NAT[INET_ADDRSTRLEN], s_ip_dst_NAT[INET_ADDRSTRLEN];
-						u_int16_t sport, dport, sport_NAT, dport_NAT;
-
-						inet_ntop(AF_INET, &(info->ip_src), s_ip_src, INET_ADDRSTRLEN);
-						inet_ntop(AF_INET, &(info->ip_dst), s_ip_dst, INET_ADDRSTRLEN);
-						inet_ntop(AF_INET, &(info_NAT->ip_src), s_ip_src_NAT, INET_ADDRSTRLEN);
-						inet_ntop(AF_INET, &(info_NAT->ip_dst), s_ip_dst_NAT, INET_ADDRSTRLEN);
-						switch (info->ip_protocol)
-						{
-							case IPPROTO_ICMP:
-								fprintf(stderr, "\ncheckForRelativeNATConnection: ERROR 4 - NAT ICMP %u %s TO %s ----> NODE ICMP %u  %s TO %s\n", info_NAT->shared_info.icmp_info.type, s_ip_src_NAT, s_ip_dst_NAT, info->shared_info.icmp_info.type, s_ip_src, s_ip_dst);
-								break;
-							case IPPROTO_TCP:
-								sport = info->shared_info.tcp_info.sport;
-								dport = info->shared_info.tcp_info.dport;
-								sport_NAT = info_NAT->shared_info.tcp_info.sport;
-								dport_NAT = info_NAT->shared_info.tcp_info.dport;
-								fprintf(stderr, "\ncheckForRelativeNATConnection: ERROR 4 - NAT TCP  %s:%u TO %s:%u ----> NODE TCP  %s:%u TO %s:%u\n", s_ip_src_NAT, sport_NAT, s_ip_dst_NAT, dport_NAT, s_ip_src, sport, s_ip_dst, dport);
-								break;
-							case IPPROTO_UDP:
-								sport = info->shared_info.udp_info.sport;
-								dport = info->shared_info.udp_info.dport;
-								sport_NAT = info_NAT->shared_info.udp_info.sport;
-								dport_NAT = info_NAT->shared_info.udp_info.dport;
-								fprintf(stderr, "\ncheckForRelativeNATConnection: ERROR 4 - NAT UDP  %s:%u TO %s:%u ----> NODE UDP  %s:%u TO %s:%u\n", s_ip_src_NAT, sport_NAT, s_ip_dst_NAT, dport_NAT, s_ip_src, sport, s_ip_dst, dport);
-								break;
-						}
-						exit(EXIT_FAILURE);
-					}
-#endif
-				}
-			}
 #if DEBUG > 4
 			if (node_NAT->nprocs != info_NAT->pointed_by_nat + info_NAT->pointed_by_relative)
 			{
-				fprintf(stderr, "\ncheckForRelativeNATConnection: ERROR 5\n");
+				fprintf(stderr, "\n%s checkForRelativeNATConnection: ERROR 4\n", s);
 				exit(EXIT_FAILURE);
 			}
 #endif
@@ -1799,12 +1771,26 @@ void checkForRelativeNATConnection(int internet, shared_sorted_list list, struct
 			// Relative NAT node exists but can't access to relative NAT node for writing.
 			// Someone else want's to delete it
 #ifdef DEBUG
-			fprintf(stderr, "\ncheckForRelativeNATConnection: ERROR 6\n");
+			fprintf(stderr, "\n%s checkForRelativeNATConnection: ERROR 5\n", s);
 			exit(EXIT_FAILURE);
 #endif
+			// Request write access to node
+			if (!requestWriteNode_shared_sorted_list(node))
+			{
+				// Someone remove this node!!!!
+				leaveNode_shared_sorted_list(list2, node_NAT);
+#ifdef DEBUG
+				fprintf(stderr, "\n%s checkForRelativeNATConnection: ERROR 6\n", s);
+				exit(EXIT_FAILURE);
+#endif
+				return;
+			}
+			// Reset relative info for node
 			leaveNode_shared_sorted_list(list2, node_NAT);
 			info->nat_node = NULL;
 			info->nat_list = NULL;
+			// Leave write access node
+			leaveWriteNode_shared_sorted_list(node);
 		}
 	}
 	else
@@ -1814,7 +1800,7 @@ void checkForRelativeNATConnection(int internet, shared_sorted_list list, struct
 		if (info->pointed_by_nat)
 		{
 			// Error. Node is pointing to a non-existing relative NAT node
-			fprintf(stderr, "\ncheckForRelativeNATConnection: ERROR 7\n");
+			fprintf(stderr, "\n%s checkForRelativeNATConnection: ERROR 7\n", s);
 			exit(EXIT_FAILURE);
 		}
 #endif
@@ -1822,25 +1808,15 @@ void checkForRelativeNATConnection(int internet, shared_sorted_list list, struct
 		info->nat_node = NULL;
 		info->nat_list = NULL;
 		info->pointed_by_nat = 0;
+		// Leave write access node
+		leaveWriteNode_shared_sorted_list(node);
 	}
-
-#if DEBUG > 4
-	if (node->nprocs-1 != info->pointed_by_nat + info->pointed_by_relative)
-	{
-		fprintf(stderr, "\ncheckForRelativeNATConnection: ERROR 8  nproc: %u  nat: %u  rel: %u\n", node->nprocs-1, info->pointed_by_nat, info->pointed_by_relative);
-		exit(EXIT_FAILURE);
-	}
-#endif
-
-	// All done. Leave write access node
-	leaveWriteNode_shared_sorted_list(node);
-
 #ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	{
 		char m[150];
 
-		sprintf(m, "%s Connection tracker: checkForRelativeNATConnection finished", s);
+		sprintf(m, "%s checkForRelativeNATConnection finished", s);
 		debugMessageModule(module, m, NULL, 1);
 	}
 #endif

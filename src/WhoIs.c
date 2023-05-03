@@ -484,7 +484,7 @@ void updateWhoisInfo(uint32_t address, char *country, char *netname)
         }
         strcpy(country, local_country);
         strncpy(netname, local_netname, MAX_VISIBLE_NETNAME);
-        if (strlen(local_netname) > MAX_VISIBLE_NETNAME)
+        if (strlen(local_netname) >= MAX_VISIBLE_NETNAME)
         {
             netname[MAX_VISIBLE_NETNAME] = '\0';
         }
