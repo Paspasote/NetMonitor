@@ -8,6 +8,7 @@
 #include <pthread.h>
 
 #include <misc.h>
+#include <Configuration.h>
 #include <GlobalVars.h>
 #include <NetMonitor.h>
 #include <PacketList.h>
@@ -83,12 +84,17 @@ void UI_banIP(int ban);
 void showWhoisDatabase();
 
 void *interface(void *ptr_paramt) {
+    unsigned long cont = 0;
 	while (1)
 	{
         if (w_globvars.visual_mode != -1) {
-    		user_interface();
             refreshTop();
-            sleep(1);
+            while (cont < SCREEN_REFRESH_DELAY) {
+                user_interface();
+                usleep(USER_INTERFACE_DELAY);
+                cont += USER_INTERFACE_DELAY;
+            }
+            cont = 0;
         }
         else {            
             // Debug mode. Prints all info
@@ -442,7 +448,7 @@ void refreshTop()
         case 0:
             // Default view. 
             // Show header
- 	        sprintf(s, "%-10s %-8s  %-7s %-13s %-15s  %15s:%-5s %-5s  %-2s  %-16s  %-s\n", "DATE", "TIME", "# HITS", "TOTAL TRANS.", "BANDWIDTH", "SOURCE IP", "PORT", "FLAGS", "CT", "NET NAME", "SERVICE");
+ 	        sprintf(s, "%-10s %-8s  %-7s %-13s %-15s  %15s:%-5s %-5s  %-2s  %-16s  %-15s %-s\n", "DATE", "TIME", "# HITS", "TOTAL TRANS.", "BANDWIDTH", "SOURCE IP", "PORT", "FLAGS", "CT", "NET NAME", "DEST. IP", "SERVICE");
             waddstr(info_panel, s);
            
             // Show horizontal line

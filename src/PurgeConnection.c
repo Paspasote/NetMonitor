@@ -228,22 +228,6 @@ unsigned purgeConnections(int internet, int incoming)
 
                         if (requestWriteNode_shared_sorted_list(node))
                         {
-                            // Check if pointers to relative/NAT connections are still valid
-                            if (info->relative_list != NULL && info->relative_node != NULL && isNodeRemoved_shared_sorted_list(info->relative_node))
-                            {
-                                // Pointer to relative connection not valid
-                                leaveNode_shared_sorted_list(info->relative_list, info->relative_node);
-                                info->relative_list = NULL;
-                                info->relative_node = NULL;
-                            }
-                            if (info->nat_list != NULL && info->nat_node != NULL && isNodeRemoved_shared_sorted_list(info->nat_node))
-                            {
-                                // Pointer to NAT connection not valid
-                                leaveNode_shared_sorted_list(info->nat_list, info->nat_node);
-                                info->nat_list = NULL;
-                                info->nat_node = NULL;
-                            }
-
                             // Update bandwidth
                             Purge_updateBandwidth(info, now);
 
@@ -288,9 +272,7 @@ unsigned purgeConnections(int internet, int incoming)
 
 void purge_connection(shared_sorted_list list, struct node_shared_sorted_list *node)
 {
-    struct connection_info *info, *info_relative, *info_nat;
-    struct node_shared_sorted_list *relative_node, *nat_node;
-    shared_sorted_list relative_list, nat_list;
+    struct connection_info *info;
 
 #ifdef DEBUG
     /***************************  DEBUG ****************************/
@@ -311,14 +293,6 @@ void purge_connection(shared_sorted_list list, struct node_shared_sorted_list *n
 
     info = (struct connection_info *)node->info;
 
-    // Get relative connection info
-    relative_node = info->relative_node;
-    relative_list = info->relative_list;
-
-    // Get relative NAT connection info
-    nat_node = info->nat_node;
-    nat_list = info->nat_list;
-
    // Purge bandwidth information
     Purge_freeLastConnections(info, NULL);
 
@@ -328,107 +302,6 @@ void purge_connection(shared_sorted_list list, struct node_shared_sorted_list *n
         leaveReadNode_shared_sorted_list(node);
         leaveNode_shared_sorted_list(list, node);
     }
-
-    // Was this node pointing to a relative connection
-    if (relative_node != NULL && relative_list != NULL)
-    {
-        // Yes. We have to leave access to relative node
-#ifdef DEBUG
-        /***************************  DEBUG ****************************/
-        {
-            char m[150];
-
-            sprintf(m, "Connection purger: Purging conn, Before request write access to relative...");
-		    debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
-        }
-#endif
-        if (requestWriteNode_shared_sorted_list(relative_node))
-        {
-#ifdef DEBUG
-            /***************************  DEBUG ****************************/
-            {
-                char m[150];
-
-                sprintf(m, "Connection purger: Purging conn, After request write access to relative...");
-		        debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
-            }
-#endif
-            // Is relative node pointing to this node?
-            info_relative = (struct connection_info *)relative_node->info;
-            if (info_relative->relative_list != NULL || info_relative->relative_node != NULL)
-            {
-                // Yes. Removing references to this node
-                info_relative->relative_list = NULL;
-                info_relative->relative_node = NULL;
-                // One less pointer to this node
-                leaveNode_shared_sorted_list(list, node);
-            }
-
-            // This node not pointing to relative node any more
-            info_relative->pointed_by_relative--;
-
-            leaveWriteNode_shared_sorted_list(relative_node);
-        }
-
-        // One less pointer to relative node
-        leaveNode_shared_sorted_list(relative_list, relative_node);
-    }
-
-#ifdef DEBUG
-    /***************************  DEBUG ****************************/
-    {
-        char m[150];
-
-        sprintf(m, "Connection purger: Purging conn, Before check for relative NAT...");
-		debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
-    }
-#endif
-
-    // Was this node pointing to a NAT connection
-    if (nat_node != NULL && nat_list != NULL)
-    {
-        // Yes. We have to leave access to NAT node
-#ifdef DEBUG
-        /***************************  DEBUG ****************************/
-        {
-            char m[150];
-
-            sprintf(m, "Connection purger: Purging conn, Before request write access to NAT...");
-		    debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
-        }
-#endif
-        if (requestWriteNode_shared_sorted_list(nat_node))
-        {
-#ifdef DEBUG
-            /***************************  DEBUG ****************************/
-            {
-                char m[150];
-
-                sprintf(m, "Connection purger: Purging conn, After request write access to NAT...");
-		        debugMessageModule(CONNECTIONS_PURGER, m, NULL, 1);
-            }
-#endif
-            // Is NAT node pointing to this node?
-            info_nat = (struct connection_info *)nat_node->info;
-            if (info_nat->nat_list != NULL || info_nat->nat_node != NULL)
-            {
-                // Yes. Removing references to this node
-                info_nat->nat_list = NULL;
-                info_nat->nat_node = NULL;
-                // One less pointer to this node
-                leaveNode_shared_sorted_list(list, node);
-            }
-
-            // This node not pointing to NAT node any more
-            info_nat->pointed_by_nat--;
-
-            leaveWriteNode_shared_sorted_list(nat_node);
-        }
-
-        // One less pointer to NAT node
-        leaveNode_shared_sorted_list(nat_list, nat_node);
-    }
-
 #ifdef DEBUG
     /***************************  DEBUG ****************************/
     {

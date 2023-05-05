@@ -75,6 +75,7 @@ void DV_updateList()
 	sem_t *mutex;
 	int i;
 	struct node_shared_sorted_list *node;
+	struct connection_info *node_info;
 	struct DV_info *info;
 
 	if (!isEmpty_sorted_list(w_globvars.DV_l))
@@ -97,33 +98,45 @@ void DV_updateList()
 				// Read access to connection node is needed
 				if (requestReadNode_shared_sorted_list(node))
 				{
-					// Allocate memory for this connection
-					info = (struct DV_info *) malloc(sizeof(struct DV_info));
-					if (info == NULL) 
-					{
-						fprintf(stderr,"DV_updateList: Could not allocate memory!!\n");
-						exit(1);				
+					// Get node info
+					node_info = (struct connection_info *) node->info;
+
+					// Is this an incoming starting (client) connection?
+					if (node_info->starting) {
+						// Yes. Allocate memory for this connection
+						info = (struct DV_info *) malloc(sizeof(struct DV_info));
+						if (info == NULL) 
+						{
+							fprintf(stderr,"DV_updateList: Could not allocate memory!!\n");
+							exit(1);				
+						}
+
+						// Save the connection info
+						info->conn_node = node;
+						info->conn_list = hash_table[i];
+						strcpy(info->country, "");
+						strcpy(info->netname, "");
+						strcpy(info->flags, "?    ");
+						info->iptable_rule = 0;
+						info->stablished = 0;
+
+
+
+						// Insert the new connection in the list
+						insert_sorted_list(w_globvars.DV_l, info);
+
+						// We don't leave node's access because node view is pointing to this node connection
 					}
-
-					// Save the connection info
-					info->conn_node = node;
-					info->conn_list = hash_table[i];
-					strcpy(info->country, "");
-					strcpy(info->netname, "");
-					strcpy(info->flags, "?    ");
-					info->iptable_rule = 0;
-					info->stablished = 0;
-
-
-
-					// Insert the new connection in the list
-					insert_sorted_list(w_globvars.DV_l, info);
+					else {
+						// it's not an incoming starting (client) connection. We are not interested on it.
+						// We leave node's access because any node is pointing to this node connection
+						leaveNode_shared_sorted_list(hash_table[i], node);
+					}
 
 					// Leave read access
 					leaveReadNode_shared_sorted_list(node);
 
 					// Next node
-					// We don't leave node's access because node view is pointing to this node connection
 					node = nextNode_shared_sorted_list(hash_table[i], node, 0);
 				}
 				else
@@ -169,7 +182,7 @@ void DV_ShowElement(void *data, void *param)
 	char line[250];
 	char s_protocol[5];
 	struct servent *servinfo;
-	char s_ip_src[INET_ADDRSTRLEN], s_ip_dst[INET_ADDRSTRLEN];
+	char s_ip_src[INET_ADDRSTRLEN], s_ip_dst[INET_ADDRSTRLEN], s_ip_NAT[INET_ADDRSTRLEN], *p_ip_dst;
 	char s_icmp[50];
 	char total_bytes[20];
 	char *service_alias;
@@ -209,11 +222,6 @@ void DV_ShowElement(void *data, void *param)
 	}
 	conn = (struct connection_info *)info->conn_node->info;
 
-	if (!conn->starting) {
-		DV_freeRequests(info, conn_list, conn_node, 1);
-		return;
-	}	
-
 #ifdef DEBUG
 	/***************************  DEBUG ****************************/
 	{
@@ -231,6 +239,11 @@ void DV_ShowElement(void *data, void *param)
 
 	inet_ntop(AF_INET, &(conn->ip_src), s_ip_src, INET_ADDRSTRLEN);
 	inet_ntop(AF_INET, &(conn->ip_dst), s_ip_dst, INET_ADDRSTRLEN);
+	p_ip_dst = s_ip_dst;
+	if (conn->NAT) {
+		inet_ntop(AF_INET, &(conn->ip_NAT_dst), s_ip_NAT, INET_ADDRSTRLEN);
+		p_ip_dst = s_ip_NAT;
+	}
 
 	if ((float)conn->total_bytes / 1024.0 > 99999.99) {
 		sprintf(total_bytes, "[%8.2f MB]", (float)conn->total_bytes / (1024.0*1024.0));
@@ -350,7 +363,7 @@ void DV_ShowElement(void *data, void *param)
 				}
 			}
 			// Update NAT flag
-			if (conn->nat_node != NULL)
+			if (conn->NAT)
 			{
 				info->flags[FLAG_NAT_POS] = FLAG_NAT;
 			}
@@ -362,7 +375,7 @@ void DV_ShowElement(void *data, void *param)
 			// Generate line info
 			strcpy(s_protocol, "icmp");
 			s_icmp_type(conn->shared_info.icmp_info.type, conn->shared_info.icmp_info.code, s_icmp);
-			sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s       %-5s  %2s  %-16s  %-5s%s\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, info->flags, info->country, info->netname, s_protocol, s_icmp);
+			sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s       %-5s  %2s  %-16s  %-15s %-5s%s\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, info->flags, info->country, info->netname, p_ip_dst, s_protocol, s_icmp);
 			break;
 		case IPPROTO_TCP:
 			if (now - conn->time >= TCP_VISIBLE_TIMEOUT) {
@@ -474,7 +487,7 @@ void DV_ShowElement(void *data, void *param)
 				}
 			}
 			// Update NAT flag
-			if (conn->nat_node != NULL)
+			if (conn->NAT)
 			{
 				info->flags[FLAG_NAT_POS] = FLAG_NAT;
 			}
@@ -491,15 +504,15 @@ void DV_ShowElement(void *data, void *param)
 			}*/
 			service_alias = serviceAlias(conn->ip_protocol, conn->shared_info.tcp_info.dport);
 			if (service_alias != NULL && strcmp(service_alias, "")) {
-				sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, service_alias);				
+				sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %-15s %s\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, p_ip_dst, service_alias);				
 			}
 			else {
 				servinfo = getservbyport(htons(conn->shared_info.tcp_info.dport), s_protocol);
 				if (servinfo != NULL && strcmp(servinfo->s_name, "")) {
-					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, servinfo->s_name);
+					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %-15s %s\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, p_ip_dst, servinfo->s_name);
 				}
 				else {
-					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %-5s%5u\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, s_protocol, conn->shared_info.tcp_info.dport);				
+					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %-15s %-5s%5u\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, s_ip_dst, s_protocol, conn->shared_info.tcp_info.dport);				
 				}
 			}
 			break;
@@ -612,7 +625,7 @@ void DV_ShowElement(void *data, void *param)
 				}
 			}
 			// Update NAT flag
-			if (conn->nat_node != NULL)
+			if (conn->NAT)
 			{
 				info->flags[FLAG_NAT_POS] = FLAG_NAT;
 			}
@@ -630,15 +643,15 @@ void DV_ShowElement(void *data, void *param)
 			service_alias = serviceAlias(conn->ip_protocol, conn->shared_info.udp_info.dport);
 			if (service_alias != NULL && strcmp(service_alias, "")) {
 				//sprintf(line, "%s   [%05lu] %s [%8.2f KB/s]  %22s  %s\n", s_time, conn->hits, total_bytes, conn->bandwidth, src_ip_port, service_alias);				
-				sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, service_alias);				
+				sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %-15s %s\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, p_ip_dst, service_alias);				
 			}
 			else {
 				servinfo = getservbyport(htons(conn->shared_info.udp_info.dport), s_protocol);
 				if (servinfo != NULL && strcmp(servinfo->s_name, "")) {
-					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %s\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, servinfo->s_name);
+					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %-15s %s\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, p_ip_dst, servinfo->s_name);
 				}
 				else {
-					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %-5s%5u\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, s_protocol, conn->shared_info.udp_info.dport);				
+					sprintf(line, "%s  [%05lu] %s [%8.2f KB/s]  %15s:%-5s %-5s  %2s  %-16s  %-15s %-5s%5u\n", s_time, conn->hits, total_bytes, conn->bandwidth, s_ip_src, s_port, info->flags, info->country, info->netname, p_ip_dst, s_protocol, conn->shared_info.udp_info.dport);				
 				}
 			}
 			break;	

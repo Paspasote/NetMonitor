@@ -417,7 +417,7 @@ void IPG_ShowElementService(void *data, void *param) {
 				}
 			}
 			// Update NAT flag
-			if (conn->nat_node != NULL)
+			if (conn->NAT)
 			{
 				info_service->flags[FLAG_NAT_POS] = FLAG_NAT;
 			}
@@ -484,7 +484,7 @@ void IPG_ShowElementService(void *data, void *param) {
 				}
 			}
 			// Update NAT flag
-			if (conn->nat_node != NULL)
+			if (conn->NAT)
 			{
 				info_service->flags[FLAG_NAT_POS] = FLAG_NAT;
 			}
@@ -562,7 +562,7 @@ void IPG_ShowElementService(void *data, void *param) {
 				}
 			}
 			// Update NAT flag
-			if (conn->nat_node != NULL)
+			if (conn->NAT)
 			{
 				info_service->flags[FLAG_NAT_POS] = FLAG_NAT;
 			}
