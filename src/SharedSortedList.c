@@ -11,9 +11,7 @@ int requestRemoveNode_shared_sorted_list(shared_sorted_list l, struct node_share
    MODIFIES: Allow to remove the node. (It does not remove the node yet)
    RETURN: 1 if node can be removed now, 0 if node must be removed later, -1 if someone else requested to remove this node
    NOTE1: This operation is called automatically by the operations remove_shared_sorted_list and removeNode_shared_sorted_list 
-   NOTE2: This operation is not blocking, it first marks the node for removing and if no one else is accessing the node then 
-          remove it. If someone else is accessing then returns without remove. The node will be removed when last proc leaves
-		  the node (leaveNode_shared_sorted_list operation).
+   NOTE2: If node can be removed now (0 is returned) then the mutual exclusion to ALL the list is kept after returning.
    NOTE3: After this operation marks the node for removing, only pointers and threads with previous allowed permissions will be
    		  able to perform operations with this node. Once all of them leave the node, it will be removed.		  
 */
@@ -70,6 +68,10 @@ int requestAccessNode_shared_sorted_list(shared_sorted_list l, struct node_share
 		return 0;
 	}
 
+	// NO ENTIENDO POR QUÉ CONDIDERÉ QUE ERA NECESARIO GARANTIZAR EL ACCESO EXCLUSIVO A TODA LA LISTA
+	// CUANDO SE INCREMENTA node->nprocs. ES UNA VARIABLE DEL NODO Y YA HAY ACCESO EXCLUSIVO AL NODO...
+	// TENGO QUE DARLE VUELTAS A ESTO...
+
 	// One proc more using the node
 	if (sem_wait(&(l->mutex_list))) 
 	{
@@ -91,6 +93,34 @@ int requestAccessNode_shared_sorted_list(shared_sorted_list l, struct node_share
 	return 1;
 }
 
+// ESTA OPERACIÓN AHORA MISMO ESTÁ MAL PROGRAMADA POR TRES MOTIVOS
+// 1. - CUANDO HAY PETICIONES DE ACCESO PARA ESCRITURA ESTOY HACIENDO MAL LAS COSAS
+// CUANDO HAY PETICIONES DE ACCESO PARA ESCRITURA SE PRETENDE QUE NO PASEN MAS
+// LECTORES AUNQUE HAYA LECTORES DENTRO, PARA DAR MAS PRIORIDAD A LOS ESCRITORES
+// LO QUE ESTOY HACIENDO AHORA PARA GARANTIZAR ESO ES QUE
+// ESTOY ENCOLANDO VARIOS HILOS LECTORES EN EL SEMÁFORO DE ESCRITORES Y ESO
+// DARÁ PROBLEMAS. 
+// LO QUE DEBERÍA HACER, EN TODO CASO, ES ENCOLAR SOLO A UN LECTOR EN EL 
+// SEMÁFORO DE ESCRITORES (EL PRIMERO QUE LLEGUE DESPUÉS DE QUE UN ESCRITOR HAGA LA PETICIÓN)
+// Y EL RESTO DE LECTORES HAY QUE ENCOLARLOS EN EL SEMÁFORO DE LECTORES
+// 
+// LA IDEA DE ESTA SOLUCIÓN ES QUE CUANDO UN ESCRITOR SOLICITE QUE QUIERE ESCRIBIR
+// LO MARCARÁ CON EL BULEANO write_requests	
+// EL PRIMER LECTOR QUE LLEGUE Y VEA ESA BULEANO A CIERTO NO PODRÁ PASAR AUNQUE HAYA
+// OTROS LECTORES YA DENTRO. LO QUE HARÁ SERÁ ENCOLARSE EN EL SEMÁFORO DE ESCRITORES
+// LA RAZÓN PARA QUE SE ENCOLE EN ESE SEMÁFORO Y NO EN EL DE LECTORES ES PARA QUE
+// DE FORMA NATURAL CUANDO EL ESCRITOR ANTERIOR SALGA DE LA SECCIÓN CRÍTICA 
+// (HAGA UN POST AL SEMÁFORO) DESPIERTE AL LECTOR ENCOLADO
+// A CONTINUACIÓN ESE LECTOR DESPERTARÁ AL SIGUIENTE LECTOR (HARÁ UN POST AL SEMÁFORO DE LECTORES)
+// EL LECTOR DESPERTADO TAMBIÉN DESPERTARÁ AL SIGUIENTE Y ASÍ SUCESIVAMENTE
+// ES DECIR QUE DEBE HABER UN POST AL SEMÁFORO DE LECTORES COMO OPERACIÓN FINAL DE ESTA SOLUCIÓN
+//
+// 2.- TAMBIÉN VEO INNECESARIO QUE DIRECTAMENTE UN LECTOR HAGA WAIT EN EL SEMÁFORO DE LECTORES
+// SERÍA MÁS EFICIENTE QUE NO LO HICIERA SI SABE QUE PUEDE PASAR DIRECTAMENTE
+// ES DECIR SI HAY MÁS LECTORES DENTRO Y NO HAY SOLICITUDES DE ESCRITURA
+//
+// 3.- ES PROBABLE QUE ESTÉ INCLUSO MAL CONTADOS EL NÚMERO DE LECTORES PUES AUMENTO
+// ESA VARIABLE INCLUSO ANTES DE SABER SI REALMENTE VAN A PASAR
 int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 {
 	// Is there a remove request?
@@ -122,6 +152,8 @@ int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 			exit(1);		
 		}
 		// I'm the first reader. Any writer accessing?
+		// OR
+		// Must wait for writers requesting before me
 		if (sem_wait(&(node->writers_sem)))
 		{
 			perror("requestReadNode_shared_sorted_list: sem_wait with writers_sem node");
@@ -179,7 +211,7 @@ int requestWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 	// Is there a remove request?
 	if (isNodeRemoved_shared_sorted_list(node))
 	{
-		// Yes. Can't read
+		// Yes. Can't write
 		return 0;
 	}
 

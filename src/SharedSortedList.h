@@ -30,7 +30,7 @@ typedef struct info_shared_sorted_list {
 
 // Function prototypes 
 void init_shared_sorted_list(shared_sorted_list *l, int (*compare)(void *, void*) );
-/* NEEDS: A shared_sorted_list var with NULL value
+/* NEEDS: A pointer to shared_sorted_list var with NULL value
           The function to compare two elements of the list (for sorting)
 		  This function must return -1 if first value is less than second one,
 		  0 if both values are equal and 1 in another case.
@@ -45,7 +45,7 @@ int requestAccessNode_shared_sorted_list(shared_sorted_list l, struct node_share
    RETURN: 1 if access is allowed, 0 in another case (node is marked for removing)
    NOTE1: It is not needed to call this operation unless we point directly the node without calling
          other request operations.
-   NOTE2: If proccess doesn't have a previous access to this node (by mean of other operations) then 
+   NOTE2: If thread doesn't have a previous access to this node (by mean of other operations) then 
           this operation DOES NOT GUARANTEE the node has not been previously deleted and freed. So 
           call to this operation can result in a segmentation fault.
 */
@@ -61,7 +61,7 @@ int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node);
 void leaveReadNode_shared_sorted_list(struct node_shared_sorted_list *node);
 /* NEEDS: A node of the list with read access granted
    MODIFIES: Remove read access to node
-   NOTE: Once a thread don't need to access the node, MUST call this function so that others can too
+   NOTE: Once a thread doesn't need to read the node, MUST call this function so that others (writers) can access the node
    ERROR: If leave read access without a previous request read access
 */
 
@@ -76,18 +76,18 @@ int requestWriteNode_shared_sorted_list(struct node_shared_sorted_list *node);
 void leaveWriteNode_shared_sorted_list(struct node_shared_sorted_list *node);
 /* NEEDS: A node of the list with write access granted
    MODIFIES: Remove write access to node
-   NOTE: Once a thread don't need to write the node, MUST call this function so that others can too
+   NOTE: Once a thread doesn't need to write the node, MUST call this function so that others can access the node
 */
 
 void leaveNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node);
 /* NEEDS: A list already initialized
           A node of the list
    MODIFIES: Decrement by one the number of pointers using this node
-   NOTE1: Once a thread don't need access to this node (neither read or write or remove), MUST call this function
+   NOTE1: Once a thread doesn't need access to this node (neither read or write or remove), MUST call this function
           so that update the number of pointers using this node
-   NOTE2: A node CAN NOT be removed if this number is more than one (The node is only accessed by the thread that is going
+   NOTE2: A node WONT be removed if this number is more than one (The node is not only accessed by the thread that is going
           to remove it )
-   NOTE3: If node is marked to be removed and last proc leaves it then it will be removed.
+   NOTE3: If node is marked to be removed and last proc leaves it then it will be removed automatically.
    ERROR: If leave node without a previous access to it
 */
 
@@ -150,7 +150,7 @@ void clear_all_shared_sorted_list(shared_sorted_list l, int free_info, void (*f)
           A boolean (int)
           A function (or NULL)
           An extra param for the function (or NULL)
-   MODIFIES: Remove all elements of the list (elements will be only removed if no one else is accessing).
+   MODIFIES: Remove all elements of the list (elements will be removed when no one else is accessing).
              The function f is called (if not NULL) before remove every element. This functions is called with the following
              arguments: element of the list, param
              if free_info is 1 then the free operation will be applied to every element.
