@@ -3,17 +3,27 @@
 
 #include <SharedSortedList.h>
 
+#define DEBUG 0
+
 // Prototypes
-int requestRemoveNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node, int free_info);
+
 /* NEEDS: A list already initialized
           A node of the list
 		  1 if info node must be freed, 0 in another case
    MODIFIES: Allow to remove the node. (It does not remove the node yet)
    RETURN: 1 if node can be removed now, 0 if node must be removed later, -1 if someone else requested to remove this node
-   NOTE1: This operation is called automatically by the operations remove_shared_sorted_list and removeNode_shared_sorted_list 
-   NOTE2: If node can be removed now (0 is returned) then the mutual exclusion to ALL the list is kept after returning.
-   NOTE3: After this operation marks the node for removing, only pointers and threads with previous allowed permissions will be
+   NOTE1: This operation is called automatically by the operation removeNode_shared_sorted_list 
+   NOTE2: After this operation marks the node for removing, only pointers and threads with previous allowed permissions will be
    		  able to perform operations with this node. Once all of them leave the node, it will be removed.		  
+*/
+int requestRemoveNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node, int free_info);
+
+/* NEEDS: A list already initialized
+          A node of the list
+   MODIFIES: Remove node from list and destroy it
+   NOTE1: This operation is called automatically by the operations leaveNode_shared_sorted_list, removeNode_shared_sorted_list 
+   		  and excluisiveClear_all_shared_sorted_list
+   NOTE2: The caller MUST lock the mutex mutex_remove_insert before call this operation.
 */
 void removeNodeAux_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node);
 
@@ -33,9 +43,14 @@ void init_shared_sorted_list(shared_sorted_list *l, int (*compare)(void *, void*
 		exit(1);		
 	}
 
-    if (sem_init(&((*l)->mutex_list), 0, 1))
+    if (pthread_mutex_init(&((*l)->mutex_list), NULL))
     {		
-        perror("init_shared_sorted_list: Couldn't create mutex_list semaphore for the list!!!!");
+        perror("init_shared_sorted_list: Couldn't create mutex_list pthread_mutex for the list!!!!");
+        exit(1);
+    }
+    if (pthread_mutex_init(&((*l)->mutex_remove_insert), NULL))
+    {		
+        perror("init_shared_sorted_list: Couldn't create mutex_remove_insert pthread_mutex for the list!!!!");
         exit(1);
     }
 	(*l)->header = NULL;
@@ -53,76 +68,39 @@ int requestAccessNode_shared_sorted_list(shared_sorted_list l, struct node_share
 	}
 
 	// Is there a remove request?
-	if (sem_wait(&(node->mutex_sem)))
+	if (pthread_mutex_lock(&(node->mutex_sem)))
 	{
-		perror("requestAccessNode_shared_sorted_list: sem_wait with mutex_sem node");
+		perror("requestAccessNode_shared_sorted_list: pthread_mutex_lock with mutex_sem node");
 		exit(1);		
 	}
 	if (node->remove_request)
 	{
-		if (sem_post(&(node->mutex_sem)))
+		if (pthread_mutex_unlock(&(node->mutex_sem)))
 		{
-			perror("requestAccessNode_shared_sorted_list: sem_post with mutex_sem node");
+			perror("requestAccessNode_shared_sorted_list: pthread_mutex_unlock with mutex_sem node");
 			exit(1);		
 		}
 		return 0;
 	}
 
-	// NO ENTIENDO POR QUÉ CONDIDERÉ QUE ERA NECESARIO GARANTIZAR EL ACCESO EXCLUSIVO A TODA LA LISTA
-	// CUANDO SE INCREMENTA node->nprocs. ES UNA VARIABLE DEL NODO Y YA HAY ACCESO EXCLUSIVO AL NODO...
-	// TENGO QUE DARLE VUELTAS A ESTO...
-
 	// One proc more using the node
-	if (sem_wait(&(l->mutex_list))) 
-	{
-		perror("requestAccessNode_shared_sorted_list: sem_wait with mutex_list");
-		exit(1);
-	}
 	node->nprocs++;
-	if (sem_post(&(l->mutex_list)))
+	if (pthread_mutex_unlock(&(node->mutex_sem)))
 	{
-		perror("requestAccessNode_shared_sorted_list: sem_post with mutex_list");
-		exit(1);
-	}
-	if (sem_post(&(node->mutex_sem)))
-	{
-		perror("requestAccessNode_shared_sorted_list: sem_post with mutex_sem node");
+		perror("requestAccessNode_shared_sorted_list: pthread_mutex_unlock with mutex_sem node");
 		exit(1);		
 	}
 	
 	return 1;
 }
 
-// ESTA OPERACIÓN AHORA MISMO ESTÁ MAL PROGRAMADA POR TRES MOTIVOS
-// 1. - CUANDO HAY PETICIONES DE ACCESO PARA ESCRITURA ESTOY HACIENDO MAL LAS COSAS
-// CUANDO HAY PETICIONES DE ACCESO PARA ESCRITURA SE PRETENDE QUE NO PASEN MAS
-// LECTORES AUNQUE HAYA LECTORES DENTRO, PARA DAR MAS PRIORIDAD A LOS ESCRITORES
-// LO QUE ESTOY HACIENDO AHORA PARA GARANTIZAR ESO ES QUE
-// ESTOY ENCOLANDO VARIOS HILOS LECTORES EN EL SEMÁFORO DE ESCRITORES Y ESO
-// DARÁ PROBLEMAS. 
-// LO QUE DEBERÍA HACER, EN TODO CASO, ES ENCOLAR SOLO A UN LECTOR EN EL 
-// SEMÁFORO DE ESCRITORES (EL PRIMERO QUE LLEGUE DESPUÉS DE QUE UN ESCRITOR HAGA LA PETICIÓN)
-// Y EL RESTO DE LECTORES HAY QUE ENCOLARLOS EN EL SEMÁFORO DE LECTORES
-// 
-// LA IDEA DE ESTA SOLUCIÓN ES QUE CUANDO UN ESCRITOR SOLICITE QUE QUIERE ESCRIBIR
-// LO MARCARÁ CON EL BULEANO write_requests	
-// EL PRIMER LECTOR QUE LLEGUE Y VEA ESA BULEANO A CIERTO NO PODRÁ PASAR AUNQUE HAYA
-// OTROS LECTORES YA DENTRO. LO QUE HARÁ SERÁ ENCOLARSE EN EL SEMÁFORO DE ESCRITORES
-// LA RAZÓN PARA QUE SE ENCOLE EN ESE SEMÁFORO Y NO EN EL DE LECTORES ES PARA QUE
-// DE FORMA NATURAL CUANDO EL ESCRITOR ANTERIOR SALGA DE LA SECCIÓN CRÍTICA 
-// (HAGA UN POST AL SEMÁFORO) DESPIERTE AL LECTOR ENCOLADO
-// A CONTINUACIÓN ESE LECTOR DESPERTARÁ AL SIGUIENTE LECTOR (HARÁ UN POST AL SEMÁFORO DE LECTORES)
-// EL LECTOR DESPERTADO TAMBIÉN DESPERTARÁ AL SIGUIENTE Y ASÍ SUCESIVAMENTE
-// ES DECIR QUE DEBE HABER UN POST AL SEMÁFORO DE LECTORES COMO OPERACIÓN FINAL DE ESTA SOLUCIÓN
-//
-// 2.- TAMBIÉN VEO INNECESARIO QUE DIRECTAMENTE UN LECTOR HAGA WAIT EN EL SEMÁFORO DE LECTORES
-// SERÍA MÁS EFICIENTE QUE NO LO HICIERA SI SABE QUE PUEDE PASAR DIRECTAMENTE
-// ES DECIR SI HAY MÁS LECTORES DENTRO Y NO HAY SOLICITUDES DE ESCRITURA
-//
-// 3.- ES PROBABLE QUE ESTÉ INCLUSO MAL CONTADOS EL NÚMERO DE LECTORES PUES AUMENTO
-// ESA VARIABLE INCLUSO ANTES DE SABER SI REALMENTE VAN A PASAR
 int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 {
+	struct info_queue *aux, *aux2;
+#if DEBUG == 1
+	int awaked = 0;
+#endif
+
 	// Is there a remove request?
 	if (isNodeRemoved_shared_sorted_list(node))
 	{
@@ -130,59 +108,152 @@ int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 		return 0;
 	}
 
-	// One reader more wants to read the node
-	if (sem_wait(&(node->readers_sem)))
+	// One more reader wants to read the node
+	if (pthread_mutex_lock(&(node->mutex_requests)))
 	{
-		perror("requestReadNode_shared_sorted_list: sem_wait with readers_sem node");
-		exit(1);		
+		perror("requestReadNode_shared_sorted_list: pthread_mutex_lock with mutex_requests node");
+		exit(1);
 	}
-	if (sem_wait(&(node->mutex_sem)))
-	{
-		perror("requestReadNode_shared_sorted_list: sem_wait with mutex_sem node");
-		exit(1);		
+#if DEBUG == 1
+	printf("Hilo LECTOR %lu solicita acceso lectura (nodo %p)\n", pthread_self(), node);
+#endif
+	// Any writer accessing or write requests pending?
+	if (node->nwriters > 0 || !isEmpty_double_list(node->requests_queue)) {
+#if DEBUG == 1
+		printf("Hilo LECTOR %lu debe esperar (nodo %p)\n", pthread_self(), node);
+#endif
+		// Must wait. Is requests queue empty?
+		aux = NULL;
+		if (!isEmpty_double_list(node->requests_queue)) {
+			// Get info of thread in the tail
+			aux = (struct info_queue *) tail_double_list(node->requests_queue);
+#if DEBUG == 1
+			printf("Hilo LECTOR %lu comprobando si el último thread en la cola es un lector (nodo %p)\n", pthread_self(), node);
+#endif
+			// Is it a READER?
+			if (aux->type != READER) {
+				// I'm the first reader of a group. Must use another condition var
+				aux = NULL;
+			}
+			else {
+#if DEBUG == 1
+				printf("Hilo LECTOR %lu se añade al grupo lector (nodo %p)\n", pthread_self(), node);
+#endif
+				// Another reather in the group 
+				aux->group_count++;
+			}
+		}
+		// Am I the first reader in the group ?
+		if (aux == NULL) {
+			// Yes
+#if DEBUG == 1
+			printf("Hilo LECTOR %lu es el primer lector del grupo. Creando variable cond (nodo %p)\n", pthread_self(), node);
+#endif
+			aux = (struct info_queue *) malloc(sizeof(struct info_queue));
+			if (aux == NULL)
+			{
+				fprintf(stderr,"requestReadNode_shared_sorted_list: Could not allocate memory!!\n");
+				exit(1);		
+			}
+			aux->type = READER;
+			aux->group_count = 1;
+			aux->cond_var = (pthread_cond_t *) malloc(sizeof(pthread_cond_t));
+			if (aux->cond_var == NULL)
+			{
+				fprintf(stderr,"requestReadNode_shared_sorted_list: Could not allocate memory!!\n");
+				exit(1);		
+			}
+			if (pthread_cond_init(aux->cond_var, NULL)) {
+				perror("requestReadNode_shared_sorted_list: pthread_cond_init with aux->cond_var");
+				exit(1);
+			}
+			// Enqueue myself
+#if DEBUG == 1
+			printf("Hilo LECTOR %lu a la cola de peticiones (nodo %p)\n", pthread_self(), node);
+#endif
+			insert_tail_double_list(node->requests_queue, aux);
+		}
+
+		// Must wait in cond var until we have access
+		aux2 = (struct info_queue *) front_double_list(node->requests_queue);
+		while (node->nwriters > 0 || aux != aux2) {
+#if DEBUG == 1
+			if (awaked) {
+				printf("¡¡HILO LECTOR %lu SE HA DESPERTADO Y VUELTO A DORMIR!! (nodo: %p  nwriters: %0d  aux: %p   aux2: %p)", pthread_self(), node, node->nwriters, aux, aux2);
+			}
+			else {
+				printf("Hilo LECTOR %lu se duerme (nodo %p)\n", pthread_self(), node);
+			}
+#endif
+			if (pthread_cond_wait(aux->cond_var, &(node->mutex_requests))) {
+				perror("requestReadNode_shared_sorted_list: pthread_cond_wait with aux->cond_var");
+				exit(1);
+			}
+#if DEBUG == 1
+			awaked = 1;
+			printf("Hilo LECTOR %lu se despierta (nodo %p)\n", pthread_self(), node);
+			printf("Hilo LECTOR %lu obtiene frente de la cola (nodo %p)\n", pthread_self(), node);
+#endif
+			aux2 = (struct info_queue *) front_double_list(node->requests_queue);
+		}
+
+		// We have access now!
+#if DEBUG == 1
+		printf("Hilo LECTOR %lu obtiene ya el acceso y comprueba si es el último del grupo (nodo %p)\n", pthread_self(), node);
+#endif
+		// One reader less waiting in group
+		aux->group_count--;
+		// if there are more readers in my group awake the next of them
+		if (aux->group_count > 0) {
+			// Another reader of my group
+			node->awakening_group = 1;
+#if DEBUG == 1
+			printf("Hilo LECTOR %lu comprobó que es otro lector de su grupo y lo despierta (nodo %p)\n", pthread_self(), node);
+#endif
+			if (pthread_cond_signal(aux->cond_var)) {
+				perror("requestReadNode_shared_sorted_list: pthread_cond_signal with aux->cond_var");
+				exit(1);
+			}
+		}
+		else {
+			// I'm the last reader of my group, we have to destroy cond var and free its memory
+			node->awakening_group = 0;
+#if DEBUG == 1
+			printf("Hilo LECTOR %lu comprobó que es el último lector (nodo %p)\n", pthread_self(), node);
+#endif
+			if (pthread_cond_destroy(aux->cond_var)) {
+				perror("requestReadNode_shared_sorted_list: pthread_cond_destroy with aux->cond_var");
+				exit(1);
+			}
+			free(aux->cond_var);
+			// Dequeue myself and free memory
+			remove_front_double_list(node->requests_queue, 1);
+#if DEBUG == 1
+			printf("Hilo LECTOR %lu destruyó su variable condición y se desencoló (nodo %p)\n", pthread_self(), node);
+#endif
+		}
 	}
+
+	// Another reader accessing this node
 	node->nreaders++;
-	// First reader ask for permission
-	// Also no more readers pass if there is a write request (more priority for writers)
-	if (node->nreaders == 1 || node->write_requests) {
-//	if (node->nreaders == 1) {
-		if (sem_post(&(node->mutex_sem)))
-		{
-			perror("requestReadNode_shared_sorted_list: sem_post with mutex_sem node");
-			exit(1);		
-		}
-		// I'm the first reader. Any writer accessing?
-		// OR
-		// Must wait for writers requesting before me
-		if (sem_wait(&(node->writers_sem)))
-		{
-			perror("requestReadNode_shared_sorted_list: sem_wait with writers_sem node");
-			exit(1);		
-		}
-	}
-	else {
-		// Others readers already accesing. Do not need to ask for permission
-		if (sem_post(&(node->mutex_sem)))
-		{
-			perror("requestReadNode_shared_sorted_list: sem_post with mutex_sem node");
-			exit(1);		
-		}
-	}
-	// Another reader accessing. Allow access to more readers
-	if (sem_post(&(node->readers_sem)))
-	{
-		perror("requestReadNode_shared_sorted_list: sem_post with readers_sem node");
-		exit(1);		
+#if DEBUG == 1
+	printf("Hilo LECTOR %lu regresa de la operación requestRead (nodo %p   readers: %0d)\n", pthread_self(), node, node->nreaders);
+#endif
+	if (pthread_mutex_unlock(&(node->mutex_requests))) {
+		perror("requestReadNode_shared_sorted_list: pthread_mutex_unlock with mutex_requests node");
+		exit(1);
 	}
 	return 1;
 }
 
 void leaveReadNode_shared_sorted_list(struct node_shared_sorted_list *node) {
+	struct info_queue *aux;
+
 	// One reader less using node
-	if (sem_wait(&(node->mutex_sem)))
+	if (pthread_mutex_lock(&(node->mutex_requests)))
 	{
-		perror("leaveReadNode_shared_sorted_list: sem_wait with mutex_sem node");
-		exit(1);		
+		perror("leaveReadNode_shared_sorted_list: pthread_mutex_lock with mutex_requests node");
+		exit(1);
 	}
 	if (node->nreaders == 0)
 	{
@@ -190,24 +261,50 @@ void leaveReadNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 		exit(1);
 	}
 	node->nreaders--;
-	// Am i the last reader?
-	if (!node->nreaders) {
-		// Free node for writers (or readers)
-		if (sem_post(&(node->writers_sem)))
-		{
-			perror("leaveReadNode_shared_sorted_list: sem_post with writers_sem node");
-			exit(1);		
+#if DEBUG == 1
+	printf("Hilo LECTOR %lu abandona acceso lectura (nodo %p   readers: %0d)\n", pthread_self(), node, node->nreaders);
+	if (!node->awakening_group) {
+		if (!isEmpty_double_list(node->requests_queue)) {
+			printf("Hilo LECTOR %lu es el último que abandona lectura y despierta al siguiente (nodo %p)\n", pthread_self(), node);
+		}
+		else {
+			printf("Hilo LECTOR %lu es el último que abandona lectura pero no hay más peticiones (nodo %p)\n", pthread_self(), node);
 		}
 	}
-	if (sem_post(&(node->mutex_sem)))
-	{
-		perror("leaveReadNode_shared_sorted_list: sem_post with mutex_sem node");
-		exit(1);		
+#endif
+	// Have to awake the next?
+	if (!node->awakening_group && !isEmpty_double_list(node->requests_queue)) {
+		// Try to awake next thread in the queue
+		// Get its info from queue
+		aux = (struct info_queue *) front_double_list(node->requests_queue);
+		if (pthread_cond_signal(aux->cond_var)) {
+			perror("leaveReadNode_shared_sorted_list: pthread_cond_signal with aux->cond_var");
+			exit(1);
+		}
+#if DEBUG == 1
+		if (aux->type == WRITER) {
+			printf("Hilo LECTOR %lu despertó al siguiente escritor esperando (nodo %p)\n", pthread_self(), node);
+		}
+		else {
+			printf("Hilo LECTOR %lu DESPERTÓ A UN LECTOR esperando (nodo %p)\n", pthread_self(), node);
+		}
+#endif
 	}
-
+#if DEBUG == 1
+	printf("Hilo LECTOR %lu regresa de la operación leaveRequestRead (nodo %p)\n", pthread_self(), node);
+#endif
+	if (pthread_mutex_unlock(&(node->mutex_requests))) {
+		perror("leaveReadNode_shared_sorted_list: pthread_mutex_unlock with mutex_requests node");
+		exit(1);
+	}
 }
 
 int requestWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
+	struct info_queue *aux, *aux2;
+#if DEBUG == 1
+	int awaked = 0;
+#endif
+
 	// Is there a remove request?
 	if (isNodeRemoved_shared_sorted_list(node))
 	{
@@ -216,63 +313,135 @@ int requestWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 	}
 
 	// One writer more requesting write access to the node
-	if (sem_wait(&(node->mutex_sem)))
+	if (pthread_mutex_lock(&(node->mutex_requests)))
 	{
-		perror("requestWriteNode_shared_sorted_list: sem_wait with mutex_sem node");
-		exit(1);		
+		perror("requestWriteNode_shared_sorted_list: pthread_mutex_lock with mutex_requests node");
+		exit(1);
 	}
-	node->write_requests++;
-	if (sem_post(&(node->mutex_sem)))
-	{
-		perror("requestWriteNode_shared_sorted_list: sem_post with mutex_sem node");
-		exit(1);		
+#if DEBUG == 1
+	printf("Hilo ESCRITOR %lu solicita acceso (nodo %p)\n", pthread_self(), node);
+#endif
+	// Anyone accessing?
+	if (node->nwriters > 0 || node->nreaders > 0 || !isEmpty_double_list(node->requests_queue)) {
+#if DEBUG == 1
+		printf("Hilo ESCRITOR %lu debe esperar (nodo %p)\n", pthread_self(), node);
+#endif
+		// Must wait and insert myself in queue
+		aux = (struct info_queue *) malloc(sizeof(struct info_queue));
+		if (aux == NULL)
+		{
+			fprintf(stderr,"requestWriteNode_shared_sorted_list: Could not allocate memory!!\n");
+			exit(1);		
+		}
+		aux->type = WRITER;
+		// Must create a new cond var
+		aux->cond_var = (pthread_cond_t *) malloc(sizeof(pthread_cond_t));
+		if (aux->cond_var == NULL)
+		{
+			fprintf(stderr,"requestWriteNode_shared_sorted_list: Could not allocate memory!!\n");
+			exit(1);		
+		}
+		if (pthread_cond_init(aux->cond_var, NULL)) {
+			perror("requestWriteNode_shared_sorted_list: pthread_cond_init with aux->cond_var");
+			exit(1);
+		}
+		// Enqueue myself
+#if DEBUG == 1
+		printf("Hilo ESCRITOR %lu a la cola de peticiones (nodo %p)\n", pthread_self(), node);
+#endif
+		insert_tail_double_list(node->requests_queue, aux);
+		// Must wait in cond var until we have access
+		aux2 = (struct info_queue *) front_double_list(node->requests_queue);
+		while (node->nwriters > 0 || node->nreaders > 0 || aux != aux2) {
+#if DEBUG == 1
+			if (awaked) {
+				printf("¡¡HILO ESCRITOR %lu SE HA DESPERTADO Y VUELTO A DORMIR!! (nodo: %p  nwriters: %0d  nreaders: %0d   aux: %p   aux2: %p)", pthread_self(), node, node->nwriters, node->nreaders, aux, aux2);
+			}
+			else {
+				printf("Hilo ESCRITOR %lu se duerme (nodo %p)\n", pthread_self(), node);
+			}
+#endif
+			if (pthread_cond_wait(aux->cond_var, &(node->mutex_requests))) {
+				perror("requestWriteNode_shared_sorted_list: pthread_cond_wait with mutex_requests node");
+				exit(1);
+			}
+#if DEBUG == 1
+			awaked = 1;
+			printf("Hilo ESCRITOR %lu se despierta (nodo %p)\n", pthread_self(), node);
+			printf("Hilo ESCRITOR %lu obtiene frente de la cola (nodo %p)\n", pthread_self(), node);
+#endif
+			aux2 = (struct info_queue *) front_double_list(node->requests_queue);
+		}
+
+		// We have access now!
+#if DEBUG == 1
+		printf("Hilo ESCRITOR %lu obtiene ya el acceso (nodo %p)\n", pthread_self(), node);
+#endif
+		// We have to destroy cond var and free its memory
+		if (pthread_cond_destroy(aux->cond_var)) {
+			perror("requestWriteNode_shared_sorted_list: pthread_cond_destroy with aux->cond_var");
+			exit(1);
+		}
+		free(aux->cond_var);
+		// Remove myself from queue and free memory
+		remove_front_double_list(node->requests_queue, 1);
+#if DEBUG == 1
+		printf("Hilo ESCRITOR %lu destruyó su variable condición y se desencoló (nodo %p)\n", pthread_self(), node);
+#endif
 	}
 
-	// Request write access
-	if (sem_wait(&(node->writers_sem)))
-	{
-		perror("requestWriteNode_shared_sorted_list: sem_wait with writers_sem node");
-		exit(1);		
-	}
-
-	// Access allowed
-	if (sem_wait(&(node->mutex_sem)))
-	{
-		perror("requestWriteNode_shared_sorted_list: sem_wait with mutex_sem node");
-		exit(1);		
-	}
-	node->write_requests--;
+	// Another writer accessing this node
 	node->nwriters++;
-	if (sem_post(&(node->mutex_sem)))
-	{
-		perror("requestWriteNode_shared_sorted_list: sem_post with mutex_sem node");
-		exit(1);		
+#if DEBUG == 1
+	printf("Hilo ESCRITOR %lu regresa de la operación requestWrite (nodo %p)\n", pthread_self(), node);
+#endif
+	if (pthread_mutex_unlock(&(node->mutex_requests))) {
+		perror("requestWriteNode_shared_sorted_list: pthread_mutex_unlock with mutex_requests node");
+		exit(1);
 	}
 	return 1;
 }
 
 void leaveWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
-	if (sem_wait(&(node->mutex_sem)))
+	struct info_queue *aux;
+
+	// One writer less using node
+	if (pthread_mutex_lock(&(node->mutex_requests)))
 	{
-		perror("leaveWriteNode_shared_sorted_list: sem_wait with mutex_sem node");
-		exit(1);		
+		perror("leaveWriteNode_shared_sorted_list: pthread_mutex_lock with mutex_requests node");
+		exit(1);
 	}
 	if (node->nwriters == 0)
 	{
 		fprintf(stderr,"leaveWriteNode_shared_sorted_list: number of writers with access to node is under zero!!\n");
 		exit(1);
 	}
+#if DEBUG == 1
+	printf("Hilo ESCRITOR %lu abandona acceso escritura (nodo %p)\n", pthread_self(), node);
+#endif
 	node->nwriters--;
-	if (sem_post(&(node->mutex_sem)))
-	{
-		perror("leaveWriteNode_shared_sorted_list: sem_post with mutex_sem node");
-		exit(1);		
+	// if queue is not empty awake the next thread
+	if (!isEmpty_double_list(node->requests_queue)) {
+#if DEBUG == 1
+		printf("Hilo ESCRITOR %lu despierta al siguiente hilo esperando (nodo %p)\n", pthread_self(), node);
+#endif
+		// Get its info from queue
+		aux = (struct info_queue *) front_double_list(node->requests_queue);
+		// Awake him
+		if (pthread_cond_signal(aux->cond_var)) {
+			perror("leaveWriteNode_shared_sorted_list: pthread_cond_signal with aux->cond_var");
+			exit(1);
+		}
+#if DEBUG == 1
+		printf("Hilo ESCRITOR %lu despertó al siguiente hilo esperando (nodo %p)\n", pthread_self(), node);
+#endif
 	}
-	// Free node for writers (or readers)
-	if (sem_post(&(node->writers_sem)))
-	{
-		perror("leaveWriteNode_shared_sorted_list: sem_post with writers_sem node");
-		exit(1);		
+#if DEBUG == 1
+	printf("Hilo ESCRITOR %lu regresa de la operación leaveRequestWrite (nodo %p)\n", pthread_self(), node);
+#endif
+	if (pthread_mutex_unlock(&(node->mutex_requests))) {
+		perror("leaveWriteNode_shared_sorted_list: pthread_mutex_unlock with mutex_requests node");
+		exit(1);
 	}
 }
 
@@ -285,46 +454,39 @@ int requestRemoveNode_shared_sorted_list(shared_sorted_list l, struct node_share
 	}
 
 	// Is there another remove request?
-	if (sem_wait(&(node->mutex_sem)))
+	if (pthread_mutex_lock(&(node->mutex_sem)))
 	{
-		perror("requestRemoveNode_shared_sorted_list: sem_wait with mutex_sem node");
+		perror("requestRemoveNode_shared_sorted_list: pthread_mutex_lock with mutex_sem node");
 		exit(1);
 	}
 	if (node->remove_request)
 	{
 		// Yes. Can't remove node
-		if (sem_post(&(node->mutex_sem)))
-		{
-			perror("requestRemoveNode_shared_sorted_list: sem_post with mutex_sem node");
-			exit(1);		
+		if (pthread_mutex_unlock(&(node->mutex_sem))) {
+			perror("requestRemoveNode_shared_sorted_list: pthread_mutex_unlock with mutex_sem node");
+			exit(1);
 		}
+
 		return -1;
 	}
 	// No. We can remove the node
 	node->remove_request = 1;
 	node->free_info = free_info;
-	if (sem_post(&(node->mutex_sem)))
-	{
-		perror("requestRemoveNode_shared_sorted_list: sem_post with mutex_sem node");
-		exit(1);		
-	}
 
 	// Am I the only one in this node?
-	if (sem_wait(&(l->mutex_list))) 
-	{
-		perror("requestRemoveNode_shared_sorted_list: sem_wait with mutex_list");
-		exit(1);
-	}
 	if (node->nprocs > 1) {
 		// No. return 0
-		if (sem_post(&(l->mutex_list)))
-		{
-			perror("requestRemoveNode_shared_sorted_list: sem_post with mutex_list");
-			exit(1);		
+		if (pthread_mutex_unlock(&(node->mutex_sem))) {
+			perror("requestRemoveNode_shared_sorted_list: pthread_mutex_unlock with mutex_sem node");
+			exit(1);
 		}
 		return 0;
 	}
 
+	if (pthread_mutex_unlock(&(node->mutex_sem))) {
+		perror("requestRemoveNode_shared_sorted_list: pthread_mutex_unlock with mutex_sem node");
+		exit(1);
+	}
 	return 1;
 }
 
@@ -337,13 +499,13 @@ void leaveNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorte
 	}
 
 	// One proc less using the node
-	if (sem_wait(&(l->mutex_list))) 
+	if (pthread_mutex_lock(&(node->mutex_sem)))
 	{
-		perror("leaveNode_shared_sorted_list: sem_wait with mutex_list");
-		exit(1);
+		perror("leaveNode_shared_sorted_list: pthread_mutex_lock with mutex_sem node");
+		exit(1);		
 	}
 	if (node->nprocs == 0) {
-		fprintf(stderr,"leaveNode_shared_sorted_listleaveNode_shared_sorted_list: number of procs with access to node is under zero!!\n");
+		fprintf(stderr,"leaveNode_shared_sorted_list: number of procs with access to node is under zero!!\n");
 		exit(1);
 	}
 	node->nprocs--;
@@ -351,13 +513,28 @@ void leaveNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorte
 	// Is this node marked to be removed and last proc leaves node?
 	if (node->nprocs == 0 && node->remove_request)
 	{
+		if (pthread_mutex_unlock(&(node->mutex_sem))) {
+			perror("leaveNode_shared_sorted_list: pthread_mutex_unlock with mutex_sem node");
+			exit(1);
+		}
+		if (pthread_mutex_lock(&(l->mutex_remove_insert)))
+		{
+			perror("leaveNode_shared_sorted_list: pthread_mutex_lock with mutex_remove_insert");
+			exit(1);		
+		}
 		// Remove this node
 		removeNodeAux_shared_sorted_list(l, node);
+		if (pthread_mutex_unlock(&(l->mutex_remove_insert)))
+		{
+			perror("leaveNode_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
+			exit(1);		
+		}
 	}
-	if (sem_post(&(l->mutex_list)))
-	{
-		perror("leaveNode_shared_sorted_list: sem_post with mutex_list");
-		exit(1);
+	else {
+		if (pthread_mutex_unlock(&(node->mutex_sem))) {
+			perror("leaveNode_shared_sorted_list: pthread_mutex_unlock with mutex_sem node");
+			exit(1);
+		}
 	}
 }
 
@@ -371,15 +548,14 @@ int isEmpty_shared_sorted_list(shared_sorted_list l)
 		exit(1);
 	}
 
-	if (sem_wait(&(l->mutex_list))) 
+	if (pthread_mutex_lock(&(l->mutex_remove_insert)))
 	{
-		perror("isEmpty_shared_sorted_list: sem_wait with mutex_list");
-		exit(1);
+		perror("isEmpty_shared_sorted_list: pthread_mutex_lock with mutex_remove_insert");
+		exit(1);		
 	}
 	ret = l->n_elements == 0;
-	if (sem_post(&(l->mutex_list)))
-	{
-		perror("isEmpty_shared_sorted_list: sem_post with mutex_list");
+	if (pthread_mutex_unlock(&(l->mutex_remove_insert))) {
+		perror("isEmpty_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
 		exit(1);
 	}
 	return ret;
@@ -395,15 +571,14 @@ unsigned long size_shared_sorted_list(shared_sorted_list l)
 		exit(1);
 	}
 
-	if (sem_wait(&(l->mutex_list))) 
+	if (pthread_mutex_lock(&(l->mutex_remove_insert)))
 	{
-		perror("size_shared_sorted_list: sem_wait with mutex_list");
-		exit(1);
+		perror("size_shared_sorted_list: pthread_mutex_lock with mutex_remove_insert");
+		exit(1);		
 	}
 	ret = l->n_elements;
-	if (sem_post(&(l->mutex_list)))
-	{
-		perror("size_shared_sorted_list: sem_post with mutex_list");
+	if (pthread_mutex_unlock(&(l->mutex_remove_insert))) {
+		perror("size_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
 		exit(1);
 	}
 	return ret;
@@ -414,16 +589,15 @@ int isNodeRemoved_shared_sorted_list(struct node_shared_sorted_list *node)
 	int ret;
 
 	// Is there a remove request?
-	if (sem_wait(&(node->mutex_sem)))
+	if (pthread_mutex_lock(&(node->mutex_sem)))
 	{
-		perror("requestReadNode_shared_sorted_list: sem_wait with mutex_sem node");
+		perror("isNodeRemoved_shared_sorted_list: pthread_mutex_lock with mutex_sem node");
 		exit(1);		
 	}
 	ret = node->remove_request;
-	if (sem_post(&(node->mutex_sem)))
-	{
-		perror("requestReadNode_shared_sorted_list: sem_post with mutex_sem node");
-		exit(1);		
+	if (pthread_mutex_unlock(&(node->mutex_sem))) {
+		perror("isNodeRemoved_shared_sorted_list: pthread_mutex_unlock with mutex_sem node");
+		exit(1);
 	}
 	return ret;
 }
@@ -431,6 +605,7 @@ int isNodeRemoved_shared_sorted_list(struct node_shared_sorted_list *node)
 struct node_shared_sorted_list * firstNode_shared_sorted_list(shared_sorted_list l) 
 {
 	struct node_shared_sorted_list *first_node;
+	int stop;
 
 	if (l == NULL) 
 	{
@@ -438,55 +613,61 @@ struct node_shared_sorted_list * firstNode_shared_sorted_list(shared_sorted_list
 		exit(1);
 	}
 
-	if (sem_wait(&(l->mutex_list))) 
+	// We CAN'T do this operation while removing or inserting
+	// DO NOT NEED TO LOCK mutex_list because mutex_remove_insert 
+	// is more restrictive
+	if (pthread_mutex_lock(&(l->mutex_remove_insert)))
 	{
-		perror("firstNode_shared_sorted_list: sem_wait with mutex_list");
-		exit(1);
+		perror("firstNode_shared_sorted_list: pthread_mutex_lock with mutex_remove_insert");
+		exit(1);		
 	}
 
 	// Get first node
 	first_node = l->header;
 
-	// Is list empty?
-	if (first_node == NULL) {
-		// Yes, return NULL
-		if (sem_post(&(l->mutex_list)))
-		{
-			perror("firstNode_shared_sorted_list: sem_post with mutex_list");
-			exit(1);		
+	// Advance until first node without remove request or end of list
+	stop = 0;
+	do {
+		// Try to find a valid node (node without remove request)
+		while (first_node != NULL && first_node->remove_request) {
+			first_node = first_node->next;
 		}
-		return NULL;
-	}
 
-	// Advance until first node without remove request
-	while (first_node->remove_request) {
-		first_node = first_node->next;
-		if (first_node == NULL) {
-			if (sem_post(&(l->mutex_list)))
+		// if found a valid node recheck remove request with mutex
+		if (first_node != NULL) {
+			if (pthread_mutex_lock(&(first_node->mutex_sem)))
 			{
-				perror("firstNode_shared_sorted_list: sem_post with mutex_list");
+				perror("firstNode_shared_sorted_list: pthread_mutex_lock with mutex_sem node");
 				exit(1);		
 			}
-			return NULL;
+			if (!first_node->remove_request) {
+				first_node->nprocs++;
+				stop = 1;
+			}
+			else {
+				first_node = first_node->next;
+			}
+			if (pthread_mutex_unlock(&(first_node->mutex_sem)))
+			{
+				perror("firstNode_shared_sorted_list: pthread_mutex_unlock with mutex_sem node");
+				exit(1);		
+			}
 		}
-	}
-	// One proc more using node
-	first_node->nprocs++;
+	} while (!stop && first_node != NULL);
 
-	if (sem_post(&(l->mutex_list)))
-	{
-		perror("firstNode_shared_sorted_list: sem_post with mutex_list");
-		exit(1);		
+	if (pthread_mutex_unlock(&(l->mutex_remove_insert))) {
+		perror("firstNode_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
+		exit(1);
 	}
 
-	// Return next node
+	// Return first node
 	return first_node;
-
 }
 
 struct node_shared_sorted_list * nextNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node, int leave_current) 
 {
-	struct node_shared_sorted_list *next_node;
+	struct node_shared_sorted_list *nextNode;
+	int stop;
 
 	if (l == NULL) 
 	{
@@ -494,55 +675,67 @@ struct node_shared_sorted_list * nextNode_shared_sorted_list(shared_sorted_list 
 		exit(1);
 	}
 
-	if (sem_wait(&(l->mutex_list))) 
+	// We CAN'T do this operation while removing or inserting
+	// DO NOT NEED TO LOCK node->mutex_sem because mutex_remove_insert 
+	// is more restrictive
+	if (pthread_mutex_lock(&(l->mutex_remove_insert)))
 	{
-		perror("nextNode_shared_sorted_list: sem_wait with mutex_list");
-		exit(1);
-	}
-
-	// Abandon current node?
-	if (leave_current) {
-		// Yes
-		node->nprocs--;
-	}
-
-	// Get next node
-	next_node = node->next;
-
-	// Exist ?
-	if (next_node == NULL) {
-		if (sem_post(&(l->mutex_list)))
-		{
-			perror("nextNode_shared_sorted_list: sem_post with mutex_list");
-			exit(1);		
-		}
-		return NULL;
-	}
-
-	// Advance until first node without remove request
-	while (next_node->remove_request) {
-		next_node = next_node->next;
-		if (next_node == NULL) {
-			if (sem_post(&(l->mutex_list)))
-			{
-				perror("nextNode_shared_sorted_list: sem_post with mutex_list");
-				exit(1);		
-			}
-			return NULL;
-		}
-	}
-
-	// One proc more using node
-	next_node->nprocs++;
-
-	if (sem_post(&(l->mutex_list)))
-	{
-		perror("nextNode_shared_sorted_list: sem_post with mutex_list");
+		perror("nextNode_shared_sorted_list: pthread_mutex_lock with mutex_remove_insert");
 		exit(1);		
 	}
 
+	// Advance until we find a node without remove request, or end of list
+	nextNode = node->next;
+	stop = 0;
+	do {
+		// Try to find a valid node (node without remove request)
+		while (nextNode != NULL && nextNode->remove_request) {
+			nextNode = nextNode->next;
+		}
+
+		// if found a valid node recheck remove request with mutex
+		if (nextNode != NULL) {
+			if (pthread_mutex_lock(&(nextNode->mutex_sem)))
+			{
+				perror("nextNode_shared_sorted_list: pthread_mutex_lock with mutex_sem node");
+				exit(1);		
+			}
+			if (!nextNode->remove_request) {
+				nextNode->nprocs++;
+				stop = 1;
+			}
+			else {
+				nextNode = nextNode->next;
+			}
+			if (pthread_mutex_unlock(&(nextNode->mutex_sem)))
+			{
+				perror("nextNode_shared_sorted_list: pthread_mutex_unlock with mutex_sem node");
+				exit(1);		
+			}
+		}
+	} while (!stop && nextNode != NULL);
+
+	if (pthread_mutex_unlock(&(l->mutex_remove_insert))) {
+		perror("nextNode_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
+		exit(1);
+	}
+
+	if (leave_current) {
+		if (pthread_mutex_lock(&(node->mutex_sem)))
+		{
+			perror("nextNode_shared_sorted_list: pthread_mutex_lock with mutex_sem node");
+			exit(1);		
+		}
+		node->nprocs--;
+		if (pthread_mutex_unlock(&(node->mutex_sem)))
+		{
+			perror("nextNode_shared_sorted_list: pthread_mutex_unlock with mutex_sem node");
+			exit(1);		
+		}
+	}
+
 	// Return next node
-	return next_node;
+	return nextNode;
 
 }
 
@@ -558,16 +751,16 @@ struct node_shared_sorted_list * find_shared_sorted_list(shared_sorted_list l, v
 	}
 
 	if (compare == NULL) {
-		if (sem_wait(&(l->mutex_list))) 
+		if (pthread_mutex_lock(&(l->mutex_list)))
 		{
-			perror("find_shared_sorted_list: sem_wait with mutex_list");
-			exit(1);
+			perror("find_shared_sorted_list: pthread_mutex_lock with mutex_list");
+			exit(1);		
 		}
 		f = l->f_compare;
-		if (sem_post(&(l->mutex_list)))
+		if (pthread_mutex_unlock(&(l->mutex_list)))
 		{
-			perror("find_shared_sorted_list: sem_post with mutex_list");
-			exit(1);
+			perror("find_shared_sorted_list: pthread_mutex_unlock with mutex_list");
+			exit(1);		
 		}
 	}
 	else {
@@ -621,6 +814,7 @@ struct node_shared_sorted_list * find_shared_sorted_list(shared_sorted_list l, v
 struct node_shared_sorted_list * exclusiveFind_shared_sorted_list(shared_sorted_list l, void *val, int (*compare)(void *, void*) ) {
 	int (*f)(void *, void*);
 	struct node_shared_sorted_list *node;
+	int stop;
 
 	if (l == NULL) 
 	{
@@ -628,9 +822,9 @@ struct node_shared_sorted_list * exclusiveFind_shared_sorted_list(shared_sorted_
 		exit(1);
 	}
 
-	if (sem_wait(&(l->mutex_list))) 
+	if (pthread_mutex_lock(&(l->mutex_remove_insert))) 
 	{
-		perror("exclusiveFind_shared_sorted_list: sem_wait with mutex_list");
+		perror("exclusiveFind_shared_sorted_list: pthread_mutex_lock with mutex_remove_insert");
 		exit(1);
 	}
 
@@ -642,26 +836,49 @@ struct node_shared_sorted_list * exclusiveFind_shared_sorted_list(shared_sorted_
 	}
 
 	// Iterate the list to search the element with value >= val
+	stop = 0;
 	node = l->header;
-	while (node != NULL && (node->remove_request == 1 || (*f)(val, node->info) == 1)) {
-			// Next node
-			node = node->next;
-	}
-	if (node != NULL) {
-		// Value found in the list?
-		if ((*f)(val, node->info) != 0) {
-			// Not found.
-			node = NULL;
+	do {
+		// Try to find a not removed node with value val, or end of list
+		while (node != NULL && (node->remove_request == 1 || (*f)(val, node->info) == 1)) {
+				// Next node
+				node = node->next;
 		}
-		else {
-			// One proc more using node
-			node->nprocs++;
+		
+		if (node != NULL) {
+			// Value found in the list?
+			if ((*f)(val, node->info) != 0) {
+				// Not found.
+				node = NULL;
+			}
+			else {
+				// Found it
+				// Recheck node is not removed with mutex locked
+				if (pthread_mutex_lock(&(node->mutex_sem)))
+				{
+					perror("exclusiveFind_shared_sorted_list: pthread_mutex_lock with mutex_sem node");
+					exit(1);		
+				}
+				if (!node->remove_request) {
+					// One proc more using node
+					node->nprocs++;
+					stop = 1;
+				}
+				else {
+					node = node->next;
+				}
+				if (pthread_mutex_unlock(&(node->mutex_sem)))
+				{
+					perror("exclusiveFind_shared_sorted_list: pthread_mutex_unlock with mutex_sem node");
+					exit(1);		
+				}
+			}
 		}
-	}
+	} while (node != NULL && !stop);
 
-	if (sem_post(&(l->mutex_list)))
+	if (pthread_mutex_unlock(&(l->mutex_remove_insert)))
 	{
-		perror("exclusiveFind_shared_sorted_list: sem_post with mutex_list");
+		perror("exclusiveFind_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
 		exit(1);
 	}
 
@@ -705,6 +922,65 @@ void clear_all_shared_sorted_list(shared_sorted_list l, int free_info, void (*f)
 	}
 }
 
+void excluisiveClear_all_shared_sorted_list(shared_sorted_list l, int free_info, void (*f)(void *, void *), void *param) {
+ 	struct node_shared_sorted_list *node, *current_node;
+
+	if (l == NULL) 
+	{
+		fprintf(stderr,"clear_all_shared_sorted_list: List is not valid!!\n");
+		exit(1);
+	}
+
+	if (pthread_mutex_lock(&(l->mutex_remove_insert))) 
+	{
+		perror("clear_all_shared_sorted_list: pthread_mutex_lock with mutex_remove_insert");
+		exit(1);
+	}
+
+	// Iterate the list 
+	node = l->header;
+	do {
+		// Try to find a not removed node, or end of list
+		while (node != NULL && node->remove_request) {
+				// Next node
+				node = node->next;
+		}
+		
+		if (node != NULL) {
+			// Found it
+			current_node = node;
+			node = node->next;
+			// Recheck if node is not removed with mutex locked
+			if (pthread_mutex_lock(&(current_node->mutex_sem)))
+			{
+				perror("clear_all_shared_sorted_list: pthread_mutex_lock with mutex_sem node");
+				exit(1);		
+			}
+			if (!current_node->remove_request) {
+				// we have to remove this node
+ 				(*f)(current_node->info, param);
+				current_node->remove_request = 1;
+				// Can we remove it and free it now?
+				if (!current_node->nprocs) {
+					// Yes, we can
+					removeNodeAux_shared_sorted_list(l, current_node);
+				}
+			}
+			if (pthread_mutex_unlock(&(current_node->mutex_sem)))
+			{
+				perror("clear_all_shared_sorted_list: pthread_mutex_unlock with mutex_sem node");
+				exit(1);		
+			}
+		}
+	} while (node != NULL);
+
+	if (pthread_mutex_unlock(&(l->mutex_remove_insert)))
+	{
+		perror("clear_all_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
+		exit(1);
+	}
+}
+
 void insert_shared_sorted_list(shared_sorted_list l,  void * val)
 {
 	int (*f)(void *, void*);
@@ -725,32 +1001,29 @@ void insert_shared_sorted_list(shared_sorted_list l,  void * val)
 		fprintf(stderr,"insert_shared_sorted_list: Could not allocate memory!!\n");
 		exit(1);		
 	}
+	new_node->requests_queue = NULL;
+	init_double_list(&(new_node->requests_queue));
+	new_node->awakening_group = 0;
 	new_node->remove_request = 0;
-	new_node->write_requests = 0;
 	new_node->nreaders = 0;
 	new_node->nwriters = 0;
 	new_node->nprocs = 0;
 	new_node->free_info = 0;
-	if (sem_init(&(new_node->writers_sem), 0, 1))
+	if (pthread_mutex_init(&(new_node->mutex_requests), NULL))
 	{		
-		perror("insert_shared_sorted_list: Couldn't create writers_sem semaphore for the node!!!!");
+		perror("insert_shared_sorted_list: Couldn't create mutex_requests mutex for the node!!!!");
 		exit(1);
 	}
-	if (sem_init(&(new_node->readers_sem), 0, 1))
+	if (pthread_mutex_init(&(new_node->mutex_sem), NULL))
 	{		
-		perror("insert_shared_sorted_list: Couldn't create readers_sem semaphore for the node!!!!");
-		exit(1);
-	}
-	if (sem_init(&(new_node->mutex_sem), 0, 1))
-	{		
-		perror("insert_shared_sorted_list: Couldn't create mutex_sem semaphore for the node!!!!");
+		perror("insert_shared_sorted_list: Couldn't create mutex_sem mutex for the node!!!!");
 		exit(1);
 	}
 	new_node->info = val;
 
-	if (sem_wait(&(l->mutex_list))) 
+	if (pthread_mutex_lock(&(l->mutex_remove_insert))) 
 	{
-		perror("insert_shared_sorted_list: sem_wait with mutex_list");
+		perror("insert_shared_sorted_list: pthread_mutex_lock with mutex_remove_insert");
 		exit(1);
 	}
 
@@ -762,18 +1035,18 @@ void insert_shared_sorted_list(shared_sorted_list l,  void * val)
 		l->header = new_node;
 		l->tail = new_node;
 		l->n_elements++;
-		if (sem_post(&(l->mutex_list)))
+		if (pthread_mutex_unlock(&(l->mutex_remove_insert))) 
 		{
-			perror("insert_shared_sorted_list: sem_post with mutex_list");
+			perror("insert_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
 			exit(1);
 		}
 	}
 	else {
 		// List is not empty
 		f = l->f_compare;
-		if (sem_post(&(l->mutex_list)))
+		if (pthread_mutex_unlock(&(l->mutex_remove_insert))) 
 		{
-			perror("insert_shared_sorted_list: sem_post with mutex_list");
+			perror("insert_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
 			exit(1);
 		}
 
@@ -803,9 +1076,9 @@ void insert_shared_sorted_list(shared_sorted_list l,  void * val)
 			}
 		}
 
-		if (sem_wait(&(l->mutex_list))) 
+		if (pthread_mutex_lock(&(l->mutex_remove_insert))) 
 		{
-			perror("insert_shared_sorted_list: sem_wait with mutex_list");
+			perror("insert_shared_sorted_list: pthread_mutex_lock with mutex_remove_insert");
 			exit(1);
 		}
 
@@ -831,9 +1104,9 @@ void insert_shared_sorted_list(shared_sorted_list l,  void * val)
 			// One more element in the list
 			l->n_elements++;
 
-			if (sem_post(&(l->mutex_list)))
+			if (pthread_mutex_unlock(&(l->mutex_remove_insert))) 
 			{
-				perror("insert_shared_sorted_list: sem_post with mutex_list");
+				perror("insert_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
 				exit(1);
 			}
 
@@ -855,9 +1128,9 @@ void insert_shared_sorted_list(shared_sorted_list l,  void * val)
 			// One more element in the list
 			l->n_elements++;
 
-			if (sem_post(&(l->mutex_list)))
+			if (pthread_mutex_unlock(&(l->mutex_remove_insert))) 
 			{
-				perror("insert_shared_sorted_list: sem_post with mutex_list");
+				perror("insert_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
 				exit(1);
 			}
 		}
@@ -873,7 +1146,7 @@ struct node_shared_sorted_list * insert_access_shared_sorted_list(shared_sorted_
 	// Is list initialized?
 	if (l == NULL) 
 	{
-		fprintf(stderr,"insert_shared_sorted_list: List is not valid!!\n");
+		fprintf(stderr,"insert_access_shared_sorted_list: List is not valid!!\n");
 		exit(1);
 	}
 
@@ -881,35 +1154,32 @@ struct node_shared_sorted_list * insert_access_shared_sorted_list(shared_sorted_
 	new_node = (struct node_shared_sorted_list *) malloc(sizeof(struct node_shared_sorted_list));
 	if (new_node == NULL)
 	{
-		fprintf(stderr,"insert_shared_sorted_list: Could not allocate memory!!\n");
+		fprintf(stderr,"insert_access_shared_sorted_list: Could not allocate memory!!\n");
 		exit(1);		
 	}
+	new_node->requests_queue = NULL;
+	init_double_list(&(new_node->requests_queue));
+	new_node->awakening_group = 0;
 	new_node->remove_request = 0;
-	new_node->write_requests = 0;
 	new_node->nreaders = 0;
 	new_node->nwriters = 0;
 	new_node->nprocs = 1;
 	new_node->free_info = 0;
-	if (sem_init(&(new_node->writers_sem), 0, 1))
+	if (pthread_mutex_init(&(new_node->mutex_requests), NULL))
 	{		
-		perror("insert_shared_sorted_list: Couldn't create writers_sem semaphore for the node!!!!");
+		perror("insert_access_shared_sorted_list: Couldn't create mutex_requests mutex for the node!!!!");
 		exit(1);
 	}
-	if (sem_init(&(new_node->readers_sem), 0, 1))
+	if (pthread_mutex_init(&(new_node->mutex_sem), NULL))
 	{		
-		perror("insert_shared_sorted_list: Couldn't create readers_sem semaphore for the node!!!!");
-		exit(1);
-	}
-	if (sem_init(&(new_node->mutex_sem), 0, 1))
-	{		
-		perror("insert_shared_sorted_list: Couldn't create mutex_sem semaphore for the node!!!!");
+		perror("insert_access_shared_sorted_list: Couldn't create mutex_sem mutex for the node!!!!");
 		exit(1);
 	}
 	new_node->info = val;
 
-	if (sem_wait(&(l->mutex_list))) 
+	if (pthread_mutex_lock(&(l->mutex_remove_insert))) 
 	{
-		perror("insert_shared_sorted_list: sem_wait with mutex_list");
+		perror("insert_access_shared_sorted_list: pthread_mutex_lock with mutex_remove_insert");
 		exit(1);
 	}
 
@@ -921,18 +1191,18 @@ struct node_shared_sorted_list * insert_access_shared_sorted_list(shared_sorted_
 		l->header = new_node;
 		l->tail = new_node;
 		l->n_elements++;
-		if (sem_post(&(l->mutex_list)))
+		if (pthread_mutex_unlock(&(l->mutex_remove_insert))) 
 		{
-			perror("insert_shared_sorted_list: sem_post with mutex_list");
+			perror("insert_access_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
 			exit(1);
 		}
 	}
 	else {
 		// List is not empty
 		f = l->f_compare;
-		if (sem_post(&(l->mutex_list)))
+		if (pthread_mutex_unlock(&(l->mutex_remove_insert))) 
 		{
-			perror("insert_shared_sorted_list: sem_post with mutex_list");
+			perror("insert_access_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
 			exit(1);
 		}
 
@@ -962,9 +1232,9 @@ struct node_shared_sorted_list * insert_access_shared_sorted_list(shared_sorted_
 			}
 		}
 
-		if (sem_wait(&(l->mutex_list))) 
+		if (pthread_mutex_lock(&(l->mutex_remove_insert))) 
 		{
-			perror("insert_shared_sorted_list: sem_wait with mutex_list");
+			perror("insert_access_shared_sorted_list: pthread_mutex_lock with mutex_remove_insert");
 			exit(1);
 		}
 
@@ -990,9 +1260,9 @@ struct node_shared_sorted_list * insert_access_shared_sorted_list(shared_sorted_
 			// One more element in the list
 			l->n_elements++;
 
-			if (sem_post(&(l->mutex_list)))
+			if (pthread_mutex_unlock(&(l->mutex_remove_insert))) 
 			{
-				perror("insert_shared_sorted_list: sem_post with mutex_list");
+				perror("insert_access_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
 				exit(1);
 			}
 
@@ -1014,9 +1284,9 @@ struct node_shared_sorted_list * insert_access_shared_sorted_list(shared_sorted_
 			// One more element in the list
 			l->n_elements++;
 
-			if (sem_post(&(l->mutex_list)))
+			if (pthread_mutex_unlock(&(l->mutex_remove_insert))) 
 			{
-				perror("insert_shared_sorted_list: sem_post with mutex_list");
+				perror("insert_access_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
 				exit(1);
 			}
 		}
@@ -1037,16 +1307,16 @@ int remove_shared_sorted_list(shared_sorted_list l, void *val, int free_info, in
 	}
 
 	if (compare == NULL) {
-		if (sem_wait(&(l->mutex_list))) 
+		if (pthread_mutex_lock(&(l->mutex_list)))
 		{
-			perror("remove_shared_sorted_list: sem_wait with mutex_list");
-			exit(1);
+			perror("remove_shared_sorted_list: pthread_mutex_lock with mutex_list");
+			exit(1);		
 		}
 		f = l->f_compare;
-		if (sem_post(&(l->mutex_list)))
+		if (pthread_mutex_unlock(&(l->mutex_list)))
 		{
-			perror("remove_shared_sorted_list: sem_post with mutex_list");
-			exit(1);
+			perror("remove_shared_sorted_list: pthread_mutex_unlock with mutex_list");
+			exit(1);		
 		}
 	}
 	else {
@@ -1096,12 +1366,16 @@ int removeNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorte
 	// We can now remove the node safely
 
 	// Remove the node from list
-	removeNodeAux_shared_sorted_list(l, node);
-
-	if (sem_post(&(l->mutex_list)))
+	if (pthread_mutex_lock(&(l->mutex_remove_insert)))
 	{
-		perror("removeNode_shared_sorted_list: sem_post with mutex_list");
-		exit(1);
+		perror("remove_shared_sorted_list: pthread_mutex_lock with mutex_remove_insert");
+		exit(1);		
+	}
+	removeNodeAux_shared_sorted_list(l, node);
+	if (pthread_mutex_unlock(&(l->mutex_remove_insert)))
+	{
+		perror("remove_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
+		exit(1);		
 	}
 
 	return 1;
@@ -1117,10 +1391,9 @@ void removeNodeAux_shared_sorted_list(shared_sorted_list l, struct node_shared_s
 		exit(1);
 	}
 
-	// Destroy semaphores of current node
-	sem_destroy(&(node->writers_sem));
-	sem_destroy(&(node->readers_sem));
-	sem_destroy(&(node->mutex_sem));
+	// Destroy mutex of current node
+	pthread_mutex_destroy(&(node->mutex_requests));
+	pthread_mutex_destroy(&(node->mutex_sem));
 
 	prev_node = node->prev;
 	next_node = node->next;
@@ -1148,6 +1421,7 @@ void removeNodeAux_shared_sorted_list(shared_sorted_list l, struct node_shared_s
 
 void updateNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node) {
 	struct node_shared_sorted_list *p, *prev_p, *prev_node, *next_node;
+	int bad = 0;
 
 	if (l == NULL) 
 	{
@@ -1155,15 +1429,42 @@ void updateNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sort
 		exit(1);
 	}
 
-	if (sem_wait(&(l->mutex_list))) 
+	if (pthread_mutex_lock(&(l->mutex_remove_insert)))
 	{
-		perror("updateNode_shared_sorted_list: sem_wait with mutex_list");
-		exit(1);
+		perror("updateNode_shared_sorted_list: pthread_mutex_lock with mutex_remove_insert");
+		exit(1);		
+	}
+
+	// Special case: list only has this node. 
+	// nothing to do
+	if (l->n_elements == 1) {
+		if (pthread_mutex_unlock(&(l->mutex_remove_insert)))
+		{
+			perror("updateNode_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
+			exit(1);		
+		}
+		return;
+	}
+
+	// Is this node in bad position?
+	prev_node = node->prev;
+	next_node = node->next;
+	if (prev_node != NULL && (l->f_compare)(node->info, prev_node->info) == -1) {
+		bad = 1;
+	}
+	if (next_node != NULL && (l->f_compare)(node->info, next_node->info) == 1) {
+		bad = 1;
+	}
+	if (!bad) {
+		if (pthread_mutex_unlock(&(l->mutex_remove_insert)))
+		{
+			perror("updateNode_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
+			exit(1);		
+		}
+		return;
 	}
 
 	// Remove node without destroy it
-	prev_node = node->prev;
-	next_node = node->next;
 	if (prev_node == NULL) {
 		// Removing at the beggining
 		l->header = next_node;
@@ -1178,55 +1479,40 @@ void updateNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sort
 	else {
 		next_node->prev = prev_node;
 	}
-	l->n_elements--;
 
 	// Insert the node in its new position
-	// Special case: list is empty
-	if (l->n_elements == 0) {
-		node->prev = NULL;
-		node->next = NULL;
+	// Find the position for the new node
+	p = l->header;
+	prev_p = NULL;
+	while (p != NULL && (l->f_compare)(node->info, p->info) == 1)
+	{
+		prev_p = p;
+		p = p->next;
+	}
+	node->next = p;
+	node->prev = prev_p;
+	if (prev_p == NULL) {
+		// Inserting at the beginning
 		l->header = node;
-		l->tail = node;
+		p->prev = node;
 	}
 	else {
-		// List is not empty
-		// Find the position for the new node
-		p = l->header;
-		prev_p = NULL;
-		while (p != NULL && (l->f_compare)(node->info, p->info) == 1)
-		{
-			prev_p = p;
-			p = p->next;
-		}
-		node->next = p;
-		node->prev = prev_p;
-		if (prev_p == NULL) {
-			// Inserting at the beginning
-			l->header = node;
-			p->prev = node;
+		prev_p->next = node;
+		if (p == NULL) {
+			// Inserting at the end
+			l->tail = node;
 		}
 		else {
-			prev_p->next = node;
-			if (p == NULL) {
-				// Inserting at the end
-				l->tail = node;
-			}
-			else {
-				// Inserting at the middle
-				p->prev = node;
-			}
+			// Inserting at the middle
+			p->prev = node;
 		}
-
 	}
 
-	l->n_elements++;
-
-	if (sem_post(&(l->mutex_list)))
+	if (pthread_mutex_unlock(&(l->mutex_remove_insert)))
 	{
-		perror("updateNode_shared_sorted_list: sem_post with mutex_list");
-		exit(1);
+		perror("updateNode_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
+		exit(1);		
 	}
-
 }
 
 void for_each_readonly_shared_sorted_list(shared_sorted_list l, void (*f)(void *, void *), void *param) {
@@ -1304,19 +1590,19 @@ void resort_shared_sorted_list(shared_sorted_list l) {
 
 	if (isEmpty_shared_sorted_list(l)) return;
 
-	if (sem_wait(&(l->mutex_list))) 
+	if (pthread_mutex_lock(&(l->mutex_remove_insert)))
 	{
-		perror("resort_shared_sorted_list: sem_wait with mutex_list");
-		exit(1);
+		perror("resort_shared_sorted_list: pthread_mutex_lock with mutex_remove_insert");
+		exit(1);		
 	}
 
 	// Using Quicksort method
 	quicksort_shared_sorted_list(l, l->header, l->tail);
 
-	if (sem_post(&(l->mutex_list)))
+	if (pthread_mutex_unlock(&(l->mutex_remove_insert)))
 	{
-		perror("resort_shared_sorted_list: sem_post with mutex_list");
-		exit(1);
+		perror("resort_shared_sorted_list: pthread_mutex_unlock with mutex_remove_insert");
+		exit(1);		
 	}
 }
 
