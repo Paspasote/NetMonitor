@@ -33,7 +33,7 @@ extern struct write_global_vars w_globvars;
 // Function prototypes
 int DV_isValidList();
 void DV_createList();
-int DV_isValidConnList(shared_sorted_list list, sem_t mutex);
+int DV_isValidConnList(shared_sorted_list list, pthread_mutex_t mutex);
 
 void DV_updateList();
 void DV_freeRequests(struct DV_info *info, shared_sorted_list conn_list, struct node_shared_sorted_list *conn_node, int leave_read);
@@ -50,19 +50,19 @@ void DV_createList() {
 	init_sorted_list(&w_globvars.DV_l, DV_Compare);
 }
 
-int DV_isValidConnList(shared_sorted_list list, sem_t mutex) 
+int DV_isValidConnList(shared_sorted_list list, pthread_mutex_t mutex) 
 {
 	int ret;
 
-	if (sem_wait(&mutex)) 
+	if (pthread_mutex_lock(&mutex)) 
 	{
-		perror("DV_isValidConnList: sem_wait with mutex list");
+		perror("DV_isValidConnList: pthread_mutex_lock with mutex list");
 		exit(1);
 	}
 	ret = list != NULL;
-	if (sem_post(&mutex))
+	if (pthread_mutex_unlock(&mutex))
 	{
-		perror("DV_isValidConnList: sem_post with mutex list");
+		perror("DV_isValidConnList: pthread_mutex_unlock with mutex list");
 		exit(1);		
 	}
 
@@ -72,7 +72,7 @@ int DV_isValidConnList(shared_sorted_list list, sem_t mutex)
 void DV_updateList()
 {
     shared_sorted_list *hash_table;
-	sem_t *mutex;
+	pthread_mutex_t *mutex;
 	int i;
 	struct node_shared_sorted_list *node;
 	struct connection_info *node_info;

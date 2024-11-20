@@ -27,8 +27,8 @@ void addConnection(int internet, int incoming, struct info_packet *packet, unsig
 uint32_t checkForRelativeNATConnection(struct connection_info *info);
 void Conn_updateBandwidth(struct connection_info *info, time_t now);
 void Conn_accumulateBytes(void *val, void *total);
-int Conn_isValidList(shared_sorted_list list, sem_t mutex);
-void Conn_createList(shared_sorted_list *list, sem_t mutex, int (*compare)(void *, void*) );
+int Conn_isValidList(shared_sorted_list list, pthread_mutex_t mutex);
+void Conn_createList(shared_sorted_list *list, pthread_mutex_t mutex, int (*compare)(void *, void*) );
 int compareConnections(void *data1, void *data2);
 int compareNAT(void *data1, void *data2);
 
@@ -45,15 +45,15 @@ void *connection_tracker(void *ptr_paramt) {
 			// Get internet connections
 			count = internetConnections();
 #ifdef DEBUG
-			if (sem_wait(&w_globvars.mutex_debug_stats)) 
+			if (pthread_mutex_lock(&w_globvars.mutex_debug_stats)) 
 			{
-				perror("connection_tracker: sem_wait with mutex_debug_stats");
+				perror("connection_tracker: pthread_mutex_lock with mutex_debug_stats");
 				exit(1);
 			}        
 			w_globvars.internet_packets_processed += count;
-			if (sem_post(&w_globvars.mutex_debug_stats))
+			if (pthread_mutex_unlock(&w_globvars.mutex_debug_stats))
 			{
-				perror("connection_tracker: sem_post with mutex_debug_stats");
+				perror("connection_tracker: pthread_mutex_unlock with mutex_debug_stats");
 				exit(1);		
 			}
 #endif
@@ -63,15 +63,15 @@ void *connection_tracker(void *ptr_paramt) {
 			// Get intranet connections
 			count = intranetConnections(); 
 #ifdef DEBUG
-			if (sem_wait(&w_globvars.mutex_debug_stats)) 
+			if (pthread_mutex_lock(&w_globvars.mutex_debug_stats)) 
 			{
-				perror("connection_tracker: sem_wait with mutex_debug_stats");
+				perror("connection_tracker: pthread_mutex_lock with mutex_debug_stats");
 				exit(1);
 			}        
 			w_globvars.intranet_packets_processed += count;
-			if (sem_post(&w_globvars.mutex_debug_stats))
+			if (pthread_mutex_unlock(&w_globvars.mutex_debug_stats))
 			{
-				perror("connection_tracker: sem_post with mutex_debug_stats");
+				perror("connection_tracker: pthread_mutex_unlock with mutex_debug_stats");
 				exit(1);		
 			}
 #endif
@@ -836,7 +836,7 @@ uint32_t checkForRelativeNATConnection(struct connection_info *info)
 {
     u_int16_t hash2;
     shared_sorted_list list2;
-	sem_t *mutex;
+	pthread_mutex_t *mutex;
 	struct connection_info *info_NAT;
 	struct node_shared_sorted_list *node_NAT;
 	uint32_t ret = 0;
@@ -985,34 +985,34 @@ void Conn_accumulateBytes(void *val, void *total) {
 	*(unsigned long *)total += ((struct connection_bandwidth *)val)->n_bytes;
 }
 
-int Conn_isValidList(shared_sorted_list list, sem_t mutex) {
+int Conn_isValidList(shared_sorted_list list, pthread_mutex_t mutex) {
 	int ret;
 
-	if (sem_wait(&mutex)) 
+	if (pthread_mutex_lock(&mutex)) 
 	{
-		perror("CONN_isValidList: sem_wait with mutex list");
+		perror("CONN_isValidList: pthread_mutex_lock with mutex list");
 		exit(1);
 	}
 	ret = list != NULL;
-	if (sem_post(&mutex))
+	if (pthread_mutex_unlock(&mutex))
 	{
-		perror("CONN_isValidList: sem_post with mutex list");
+		perror("CONN_isValidList: pthread_mutex_unlock with mutex list");
 		exit(1);		
 	}
 
 	return ret;
 }
 
-void Conn_createList(shared_sorted_list *list, sem_t mutex, int (*compare)(void *, void*) ) {
-	if (sem_wait(&mutex)) 
+void Conn_createList(shared_sorted_list *list, pthread_mutex_t mutex, int (*compare)(void *, void*) ) {
+	if (pthread_mutex_lock(&mutex)) 
 	{
-		perror("CONN_createList: sem_wait with mutex list");
+		perror("CONN_createList: pthread_mutex_lock with mutex list");
 		exit(1);
 	}
 	init_shared_sorted_list(list, compare);
-	if (sem_post(&mutex))
+	if (pthread_mutex_unlock(&mutex))
 	{
-		perror("CONN_createList: sem_post with mutex list");
+		perror("CONN_createList: pthread_mutex_unlock with mutex list");
 		exit(1);		
 	}
 }

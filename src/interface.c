@@ -295,15 +295,15 @@ void refreshTop()
         unsigned long total_intranet_purged, total_internet_purged;
 
         /*
-        if (sem_wait(&w_globvars.mutex_debug_stats)) 
+        if (pthread_mutex_lock(&w_globvars.mutex_debug_stats)) 
         {
-            perror("refreshTop: sem_wait with mutex_debug_stats");
+            perror("refreshTop: pthread_mutex_lock with mutex_debug_stats");
             exit(1);
         }        
 		sprintf(m, "Config mem.: %0lu   Inbound mem.: %0lu   Outbound mem.: %0lu   Whois mem.: %0lu   Otros mem.: %0lu", w_globvars.allocated_config, w_globvars.allocated_packets_inbound, w_globvars.allocated_packets_outbound, w_globvars.allocated_whois, w_globvars.allocated_others);
-		if (sem_post(&w_globvars.mutex_debug_stats))
+		if (pthread_mutex_unlock(&w_globvars.mutex_debug_stats))
 		{
-			perror("refreshTop: sem_post with mutex_debug_stats");
+			perror("refreshTop: pthread_mutex_unlock with mutex_debug_stats");
 			exit(1);		
 		}
 		debugMessageXY(1, 0, m, NULL, 1);
@@ -315,18 +315,18 @@ void refreshTop()
                 c_globvars.cont_oh_allow, c_globvars.cont_oh_warning, c_globvars.cont_oh_alert, c_globvars.cont_oh_deny, c_globvars.cont_services_alias);
 		debugMessageModule(INTERFACE_STATS_EXTRA1, m, NULL, 1);
 
-        if (sem_wait(&w_globvars.mutex_debug_stats)) 
+        if (pthread_mutex_lock(&w_globvars.mutex_debug_stats)) 
         {
-            perror("refreshTop: sem_wait with mutex_debug_stats");
+            perror("refreshTop: pthread_mutex_lock with mutex_debug_stats");
             exit(1);
         }        
         total_internet = w_globvars.internet_packets_processed;
         total_intranet = w_globvars.intranet_packets_processed;
         total_internet_purged = w_globvars.internet_packets_purged;
         total_intranet_purged = w_globvars.intranet_packets_purged;
-		if (sem_post(&w_globvars.mutex_debug_stats))
+		if (pthread_mutex_unlock(&w_globvars.mutex_debug_stats))
 		{
-			perror("refreshTop: sem_post with mutex_debug_stats");
+			perror("refreshTop: pthread_mutex_unlock with mutex_debug_stats");
 			exit(1);		
 		}
 
@@ -397,15 +397,15 @@ void refreshTop()
     wmove(result_panel, 0, 0);
 
     // Show info on info panel
-    if (sem_wait(&w_globvars.mutex_cont_requests)) 
+    if (pthread_mutex_lock(&w_globvars.mutex_cont_requests)) 
     {
-        perror("refreshTop: sem_wait with mutex_cont_requests");
+        perror("refreshTop: pthread_mutex_lock with mutex_cont_requests");
         exit(1);
     }
     req = w_globvars.cont_requests;
-    if (sem_post(&w_globvars.mutex_cont_requests))
+    if (pthread_mutex_unlock(&w_globvars.mutex_cont_requests))
     {
-        perror("refreshTop: sem_post with mutex_cont_requests");
+        perror("refreshTop: pthread_mutex_unlock with mutex_cont_requests");
         exit(1);
     }
     now = time(NULL);
@@ -516,15 +516,15 @@ void refreshTop()
     }
 
     // Refresh physical screen
-    if (sem_wait(&w_globvars.mutex_screen)) 
+    if (pthread_mutex_lock(&w_globvars.mutex_screen)) 
     {
-        perror("refreshTop: sem_wait with mutex_screen");
+        perror("refreshTop: pthread_mutex_lock with mutex_screen");
         exit(1);
     }
     doupdate();
-    if (sem_post(&w_globvars.mutex_screen))
+    if (pthread_mutex_unlock(&w_globvars.mutex_screen))
     {
-        perror("refreshTop: sem_post with mutex_screen");
+        perror("refreshTop: pthread_mutex_unlock with mutex_screen");
         exit(1);        
     }
 
@@ -1123,15 +1123,15 @@ void changeView()
     // Refresh panels
     getPanelDimensions();
 
-    if (sem_wait(&w_globvars.mutex_screen)) 
+    if (pthread_mutex_lock(&w_globvars.mutex_screen)) 
     {
-        perror("changeView: sem_wait with mutex_screen");
+        perror("changeView: pthread_mutex_lock with mutex_screen");
         exit(1);
     }
     prefresh(info_panel, 0, 0, 0, 0, min(INFO_LINES-1, LINES-1), min(INFO_COLS-1, COLS-1));
-    if (sem_post(&w_globvars.mutex_screen))
+    if (pthread_mutex_unlock(&w_globvars.mutex_screen))
     {
-        perror("changeView: sem_post with mutex_screen");
+        perror("changeView: pthread_mutex_unlock with mutex_screen");
         exit(1);        
     }
 

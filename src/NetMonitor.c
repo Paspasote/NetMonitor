@@ -25,7 +25,7 @@
 // EXTERNAL Global vars
 extern struct const_global_vars c_globvars;
 extern struct write_global_vars w_globvars;
-extern sem_t mutex_internet_packets, mutex_intranet_packets;
+extern pthread_mutex_t mutex_internet_packets, mutex_intranet_packets;
 extern double_list internet_packets_buffer;
 extern double_list intranet_packets_buffer;
 
@@ -171,71 +171,71 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	// Initialize semaphores
-	if (sem_init(&w_globvars.mutex_internet_packets, 0, 1))
+	// Initialize mutex
+	if (pthread_mutex_init(&w_globvars.mutex_internet_packets, NULL))
 	{		
-		fprintf(stderr, "%s: Couldn't create mutex_internet_packets semaphore!!!!", argv[0]);
+		fprintf(stderr, "%s: Couldn't create mutex_internet_packets mutex!!!!", argv[0]);
 		return 1;
 	}
-	if (sem_init(&w_globvars.mutex_intranet_packets, 0, 1))
+	if (pthread_mutex_init(&w_globvars.mutex_intranet_packets, NULL))
 	{		
-		fprintf(stderr, "%s: Couldn't create mutex_intranet_packets semaphore!!!!", argv[0]);
+		fprintf(stderr, "%s: Couldn't create mutex_intranet_packets mutex!!!!", argv[0]);
 		return 1;
 	}
-	if (sem_init(&w_globvars.mutex_conn_internet_in, 0, 1))
+	if (pthread_mutex_init(&w_globvars.mutex_conn_internet_in, NULL))
 	{		
-		fprintf(stderr, "%s: Couldn't create mutex_conn_internet_in semaphore!!!!", argv[0]);
+		fprintf(stderr, "%s: Couldn't create mutex_conn_internet_in mutex!!!!", argv[0]);
 		return 1;
 	}
-	if (sem_init(&w_globvars.mutex_conn_internet_out, 0, 1))
+	if (pthread_mutex_init(&w_globvars.mutex_conn_internet_out, NULL))
 	{		
-		fprintf(stderr, "%s: Couldn't create mutex_conn_internet_out semaphore!!!!", argv[0]);
+		fprintf(stderr, "%s: Couldn't create mutex_conn_internet_out mutex!!!!", argv[0]);
 		return 1;
 	}
-	if (sem_init(&w_globvars.mutex_conn_intranet_in, 0, 1))
+	if (pthread_mutex_init(&w_globvars.mutex_conn_intranet_in, NULL))
 	{		
-		fprintf(stderr, "%s: Couldn't create mutex_conn_intranet_in semaphore!!!!", argv[0]);
+		fprintf(stderr, "%s: Couldn't create mutex_conn_intranet_in mutex!!!!", argv[0]);
 		return 1;
 	}
-	if (sem_init(&w_globvars.mutex_conn_intranet_out, 0, 1))
+	if (pthread_mutex_init(&w_globvars.mutex_conn_intranet_out, NULL))
 	{		
-		fprintf(stderr, "%s: Couldn't create mutex_conn_intranet_out semaphore!!!!", argv[0]);
+		fprintf(stderr, "%s: Couldn't create mutex_conn_intranet_out mutex!!!!", argv[0]);
 		return 1;
 	}
-	if (sem_init(&w_globvars.mutex_view_list, 0, 1))
+	if (pthread_mutex_init(&w_globvars.mutex_view_list, NULL))
 	{		
-		fprintf(stderr, "%s: Couldn't create mutex_view_list semaphore!!!!", argv[0]);
+		fprintf(stderr, "%s: Couldn't create mutex_view_list mutex!!!!", argv[0]);
 		return 1;
 	}
-   	if (sem_init(&w_globvars.mutex_screen, 0, 1))
+   	if (pthread_mutex_init(&w_globvars.mutex_screen, NULL))
     {       
-        fprintf(stderr, "%s: Couldn't create mutex_screen semaphore!!!!", argv[0]);
+        fprintf(stderr, "%s: Couldn't create mutex_screen mutex!!!!", argv[0]);
         return 1;
     }
-   	if (sem_init(&w_globvars.mutex_debug_panel, 0, 1))
+   	if (pthread_mutex_init(&w_globvars.mutex_debug_panel, NULL))
     {       
-        fprintf(stderr, "%s: Couldn't create mutex_debug_panel semaphore!!!!", argv[0]);
+        fprintf(stderr, "%s: Couldn't create mutex_debug_panel mutex!!!!", argv[0]);
         return 1;
     }
-   	if (sem_init(&w_globvars.mutex_bd_whois, 0, 1))
+   	if (pthread_mutex_init(&w_globvars.mutex_bd_whois, NULL))
     {       
-        fprintf(stderr, "%s: Couldn't create mutex_bd_whois semaphore!!!!", argv[0]);
+        fprintf(stderr, "%s: Couldn't create mutex_bd_whois mutex!!!!", argv[0]);
         return 1;
     }
-   	if (sem_init(&w_globvars.mutex_cont_requests, 0, 1))
+   	if (pthread_mutex_init(&w_globvars.mutex_cont_requests, NULL))
     {       
-        fprintf(stderr, "%s: Couldn't create mutex_cont_requests semaphore!!!!", argv[0]);
+        fprintf(stderr, "%s: Couldn't create mutex_cont_requests mutex!!!!", argv[0]);
         return 1;
     }
-   	if (sem_init(&w_globvars.mutex_cont_whois_threads, 0, 1))
+   	if (pthread_mutex_init(&w_globvars.mutex_cont_whois_threads, NULL))
     {       
-        fprintf(stderr, "%s: Couldn't create mutex_cont_whois_threads semaphore!!!!", argv[0]);
+        fprintf(stderr, "%s: Couldn't create mutex_cont_whois_threads mutex!!!!", argv[0]);
         return 1;
     }
 #ifdef DEBUG
-   	if (sem_init(&w_globvars.mutex_debug_stats, 0, 1))
+   	if (pthread_mutex_init(&w_globvars.mutex_debug_stats, NULL))
     {       
-        fprintf(stderr, "%s: Couldn't create mutex_debug_stats semaphore!!!!", argv[0]);
+        fprintf(stderr, "%s: Couldn't create mutex_debug_stats mutex!!!!", argv[0]);
         return 1;
     }
 	w_globvars.internet_packets_processed = 0;

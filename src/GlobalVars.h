@@ -2,7 +2,7 @@
 #define __GLOBALVARS_H
 
 #include <pcap.h>
-#include <semaphore.h>
+#include <pthread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
@@ -42,18 +42,18 @@ struct const_global_vars
 
 struct write_global_vars
 {
-    // Mutex semaphores for incoming/outcoming package lists
-    sem_t mutex_internet_packets, mutex_intranet_packets;
-    // Mutex semaphores for hash tables
-    sem_t mutex_conn_internet_in, mutex_conn_internet_out, mutex_conn_intranet_in, mutex_conn_intranet_out;
-    // Mutex semaphore for list view
-    sem_t mutex_view_list;
-    // Mutex semaphores for screen
-    sem_t mutex_screen, mutex_debug_panel;
-    // Mutes semaphore for WhoIs module
-    sem_t mutex_bd_whois;
-    sem_t mutex_cont_requests;
-    sem_t mutex_cont_whois_threads;
+    // Mutex for incoming/outcoming package lists
+    pthread_mutex_t mutex_internet_packets, mutex_intranet_packets;
+    // Mutex for hash tables
+    pthread_mutex_t mutex_conn_internet_in, mutex_conn_internet_out, mutex_conn_intranet_in, mutex_conn_intranet_out;
+    // Mutex for list view
+    pthread_mutex_t mutex_view_list;
+    // Mutex for screen
+    pthread_mutex_t mutex_screen, mutex_debug_panel;
+    // Mutes for WhoIs module
+    pthread_mutex_t mutex_bd_whois;
+    pthread_mutex_t mutex_cont_requests;
+    pthread_mutex_t mutex_cont_whois_threads;
 
     // Current view mode and lines for view the info
     int visual_mode;
@@ -91,7 +91,7 @@ struct write_global_vars
     unsigned long allocated_packets_inbound;
     unsigned long allocated_packets_outbound;
     unsigned long allocated_others;
-    sem_t mutex_debug_stats;
+    pthread_mutex_t mutex_debug_stats;
 #endif
 };
 

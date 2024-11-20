@@ -40,9 +40,9 @@ void debugMessage(char *message, attr_t *attr, unsigned prioridad)
     }
 
     // Get exclusive use of the panel
-    if (sem_wait(&w_globvars.mutex_debug_panel)) 
+    if (pthread_mutex_lock(&w_globvars.mutex_debug_panel)) 
     {
-        perror("debugMessageXY: sem_wait with mutex_debug_panel");
+        perror("debugMessageXY: pthread_mutex_lock with mutex_debug_panel");
         exit(1);
     }
 
@@ -60,22 +60,22 @@ void debugMessage(char *message, attr_t *attr, unsigned prioridad)
     waddstr(debug_panel, message);
 
     // Refresh debug panel
-    if (sem_wait(&w_globvars.mutex_screen)) 
+    if (pthread_mutex_lock(&w_globvars.mutex_screen)) 
     {
-        perror("debugMessage: sem_wait with mutex_screen");
+        perror("debugMessage: pthread_mutex_lock with mutex_screen");
         exit(1);
     }
     prefresh(debug_panel, 0, 0, posY_debug, 0, min(posY_debug+DEBUG_LINES-1, LINES-1), min(COLS, COLS-1));
-    if (sem_post(&w_globvars.mutex_screen))
+    if (pthread_mutex_unlock(&w_globvars.mutex_screen))
     {
-        perror("debugMessage: sem_post with mutex_screen");
+        perror("debugMessage: pthread_mutex_unlock with mutex_screen");
         exit(1);        
     }
 
     // Release panel
-    if (sem_post(&w_globvars.mutex_debug_panel))
+    if (pthread_mutex_unlock(&w_globvars.mutex_debug_panel))
     {
-        perror("debugMessage: sem_post with mutex_debug_panel");
+        perror("debugMessage: pthread_mutex_unlock with mutex_debug_panel");
         exit(1);        
     }
     //sleep(3);
@@ -94,9 +94,9 @@ void debugMessageXY(int row, int col, char *message, attr_t *attr, unsigned prio
     }
 
     // Get exclusive use of the panel
-    if (sem_wait(&w_globvars.mutex_debug_panel)) 
+    if (pthread_mutex_lock(&w_globvars.mutex_debug_panel)) 
     {
-        perror("debugMessageXY: sem_wait with mutex_debug_panel");
+        perror("debugMessageXY: pthread_mutex_lock with mutex_debug_panel");
         exit(1);
     }
 
@@ -121,22 +121,22 @@ void debugMessageXY(int row, int col, char *message, attr_t *attr, unsigned prio
 
 
      // Refresh debug panel
-    if (sem_wait(&w_globvars.mutex_screen)) 
+    if (pthread_mutex_lock(&w_globvars.mutex_screen)) 
     {
-        perror("debugMessage: sem_wait with mutex_screen");
+        perror("debugMessage: pthread_mutex_lock with mutex_screen");
         exit(1);
     }
     prefresh(debug_panel, 0, 0, posY_debug, 0, min(posY_debug+DEBUG_LINES-1, LINES-1), min(COLS, COLS-1));
-    if (sem_post(&w_globvars.mutex_screen))
+    if (pthread_mutex_unlock(&w_globvars.mutex_screen))
     {
-        perror("debugMessage: sem_post with mutex_screen");
+        perror("debugMessage: pthread_mutex_unlock with mutex_screen");
         exit(1);        
     }
 
     // Release panel
-    if (sem_post(&w_globvars.mutex_debug_panel))
+    if (pthread_mutex_unlock(&w_globvars.mutex_debug_panel))
     {
-        perror("debugMessageXY: sem_post with mutex_debug_panel");
+        perror("debugMessageXY: pthread_mutex_unlock with mutex_debug_panel");
         exit(1);        
     }
     //sleep(3);

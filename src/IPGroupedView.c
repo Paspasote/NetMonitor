@@ -27,7 +27,7 @@ extern struct write_global_vars w_globvars;
 // Function prototypes
 int IPG_isValidList();
 void IPG_createList();
-int IPG_isValidConnList(shared_sorted_list list, sem_t mutex);
+int IPG_isValidConnList(shared_sorted_list list, pthread_mutex_t mutex);
 int IPG_isValidServiceList(struct IPG_info *info);
 void IPG_createServiceList(struct IPG_info *info);
 
@@ -53,18 +53,18 @@ void IPG_createList() {
 	init_sorted_list(&w_globvars.IPG_l, IPG_Compare);
 }
 
-int IPG_isValidConnList(shared_sorted_list list, sem_t mutex) {
+int IPG_isValidConnList(shared_sorted_list list, pthread_mutex_t mutex) {
 	int ret;
 
-	if (sem_wait(&mutex)) 
+	if (pthread_mutex_lock(&mutex)) 
 	{
-		perror("IPG_isValidList: sem_wait with mutex list");
+		perror("IPG_isValidList: pthread_mutex_lock with mutex list");
 		exit(1);
 	}
 	ret = list != NULL;
-	if (sem_post(&mutex))
+	if (pthread_mutex_unlock(&mutex))
 	{
-		perror("IPG_isValidList: sem_post with mutex list");
+		perror("IPG_isValidList: pthread_mutex_unlock with mutex list");
 		exit(1);		
 	}
 
@@ -82,7 +82,7 @@ void IPG_createServiceList(struct IPG_info *info) {
 void IPG_updateList()
 {
     shared_sorted_list *hash_table;
-	sem_t *mutex;
+	pthread_mutex_t *mutex;
 	int i, services_count, must_point;
 	struct node_shared_sorted_list *node;
 	struct IPG_info *info, *new_info;

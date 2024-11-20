@@ -18,7 +18,7 @@ extern struct write_global_vars w_globvars;
 
 // Function prototypes
 unsigned purgeConnections(int internet, int incoming);
-int Purge_isValidList(shared_sorted_list list, sem_t mutex);
+int Purge_isValidList(shared_sorted_list list, pthread_mutex_t mutex);
 void Purge_freeLastConnections(void *val, void *param);
 void Purge_updateBandwidth(struct connection_info *info, time_t now);
 void Purge_accumulateBytes(void *val, void *total);
@@ -42,16 +42,16 @@ void *purge_connections(void *ptr_paramt)
 			intranet_count += purgeConnections(0, 0);
 		}
 #ifdef DEBUG
-		if (sem_wait(&w_globvars.mutex_debug_stats)) 
+		if (pthread_mutex_lock(&w_globvars.mutex_debug_stats)) 
         {
-            perror("connection_tracker: sem_wait with mutex_debug_stats");
+            perror("connection_tracker: pthread_mutex_lock with mutex_debug_stats");
             exit(1);
         }        
 		w_globvars.internet_packets_purged += internet_count;
 		w_globvars.intranet_packets_purged += intranet_count;
-		if (sem_post(&w_globvars.mutex_debug_stats))
+		if (pthread_mutex_unlock(&w_globvars.mutex_debug_stats))
 		{
-			perror("connection_tracker: sem_post with mutex_debug_stats");
+			perror("connection_tracker: pthread_mutex_unlock with mutex_debug_stats");
 			exit(1);		
 		}
 #endif
@@ -66,7 +66,7 @@ void *purge_connections(void *ptr_paramt)
 unsigned purgeConnections(int internet, int incoming) 
 {
     shared_sorted_list *hash_table;
-    sem_t *mutex;
+    pthread_mutex_t *mutex;
     int i;
 	struct node_shared_sorted_list *node, *current_node;
 	struct connection_info *info;
@@ -313,18 +313,18 @@ void purge_connection(shared_sorted_list list, struct node_shared_sorted_list *n
 #endif
 }
 
-int Purge_isValidList(shared_sorted_list list, sem_t mutex) {
+int Purge_isValidList(shared_sorted_list list, pthread_mutex_t mutex) {
 	int ret;
 
-	if (sem_wait(&mutex)) 
+	if (pthread_mutex_lock(&mutex)) 
 	{
-		perror("Purge_isValidList: sem_wait with mutex list");
+		perror("Purge_isValidList: pthread_mutex_lock with mutex list");
 		exit(1);
 	}
 	ret = list != NULL;
-	if (sem_post(&mutex))
+	if (pthread_mutex_unlock(&mutex))
 	{
-		perror("Purge_isValidList: sem_post with mutex list");
+		perror("Purge_isValidList: pthread_mutex_unlock with mutex list");
 		exit(1);		
 	}
 

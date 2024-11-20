@@ -31,7 +31,7 @@ extern struct write_global_vars w_globvars;
 // Function prototypes
 int ONATV_isValidList();
 void ONATV_createList();
-int ONATV_isValidConnList(shared_sorted_list list, sem_t mutex);
+int ONATV_isValidConnList(shared_sorted_list list, pthread_mutex_t mutex);
 
 void ONATV_updateList();
 void ONATV_freeRequests(struct ONATV_info *info, shared_sorted_list conn_list, struct node_shared_sorted_list *conn_node, int leave_read);
@@ -51,19 +51,19 @@ void ONATV_createList() {
 	init_sorted_list(&w_globvars.ONATV_l, OV_Compare);
 }
 
-int ONATV_isValidConnList(shared_sorted_list list, sem_t mutex) 
+int ONATV_isValidConnList(shared_sorted_list list, pthread_mutex_t mutex) 
 {
 	int ret;
 
-	if (sem_wait(&mutex)) 
+	if (pthread_mutex_lock(&mutex)) 
 	{
-		perror("ONATV_isValidConnList: sem_wait with mutex list");
+		perror("ONATV_isValidConnList: pthread_mutex_lock with mutex list");
 		exit(1);
 	}
 	ret = list != NULL;
-	if (sem_post(&mutex))
+	if (pthread_mutex_unlock(&mutex))
 	{
-		perror("ONATV_isValidConnList: sem_post with mutex list");
+		perror("ONATV_isValidConnList: pthread_mutex_unlock with mutex list");
 		exit(1);		
 	}
 
@@ -73,7 +73,7 @@ int ONATV_isValidConnList(shared_sorted_list list, sem_t mutex)
 void ONATV_updateList()
 {
     shared_sorted_list *hash_table;
-	sem_t *mutex;
+	pthread_mutex_t *mutex;
 	int i;
 	struct node_shared_sorted_list *node;
 	struct ONATV_info *info;

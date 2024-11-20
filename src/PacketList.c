@@ -22,7 +22,7 @@ void PL_addPacket(int internet, const struct ether_header *ethernet,const struct
 	const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header, unsigned n_bytes) {
 	
 	double_list *list;
-	sem_t *mutex;
+	pthread_mutex_t *mutex;
 	struct info_packet *info;
 	int i;
 
@@ -38,41 +38,41 @@ void PL_addPacket(int internet, const struct ether_header *ethernet,const struct
 	}
 
 	// Check if buffer packages list has been created
-	if (sem_wait(mutex)) 
+	if (pthread_mutex_lock(mutex)) 
 	{
-		perror("PL_addPacket: sem_wait with mutex packages buffer");
+		perror("PL_addPacket: pthread_mutex_lock with mutex packages buffer");
 		exit(1);
 	}
 	if (*list == NULL)
 	{
 		init_double_list(list);
 	}
-	if (sem_post(mutex))
+	if (pthread_mutex_unlock(mutex))
 	{
-		perror("PL_addPacket: sem_post with mutex packages buffer");
+		perror("PL_addPacket: pthread_mutex_unlock with mutex packages buffer");
 		exit(1);		
 	}
 
 	// Maximum size??
-	if (sem_wait(mutex)) 
+	if (pthread_mutex_lock(mutex)) 
 	{
-		perror("PL_addPacket: sem_wait with mutex packages buffer");
+		perror("PL_addPacket: pthread_mutex_lock with mutex packages buffer");
 		exit(1);
 	}
 	if (size_double_list(*list) == MAX_PACKAGES)
 	{
-		if (sem_post(mutex)) 
+		if (pthread_mutex_unlock(mutex)) 
 		{
-			perror("PL_addPacket: sem_post with mutex packages buffer");
+			perror("PL_addPacket: pthread_mutex_unlock with mutex packages buffer");
 			exit(1);
 		}
 		//fprintf(stderr, "PL_addPacket: Buffer overflow!!!!!\n");
 		//exit(1);
 		return;
 	}
-	if (sem_post(mutex))
+	if (pthread_mutex_unlock(mutex))
 	{
-		perror("PL_addPacket: sem_post with mutex packages buffer");
+		perror("PL_addPacket: pthread_mutex_unlock with mutex packages buffer");
 		exit(1);		
 	}
 	
@@ -133,15 +133,15 @@ void PL_addPacket(int internet, const struct ether_header *ethernet,const struct
 	}
 
 	// Store the current packet in packet buffer
-	if (sem_wait(mutex))
+	if (pthread_mutex_lock(mutex))
 	{
-		perror("PL_addPacket: sem_wait with mutex packages buffer");
+		perror("PL_addPacket: pthread_mutex_lock with mutex packages buffer");
 		exit(1);
 	}
 	insert_tail_double_list(*list, info);
-	if (sem_post(mutex))
+	if (pthread_mutex_unlock(mutex))
 	{
-		perror("PL_addPacket: sem_post with mutex packages buffer");
+		perror("PL_addPacket: pthread_mutex_unlock with mutex packages buffer");
 		exit(1);		
 	}
 
@@ -151,7 +151,7 @@ void PL_addPacket(int internet, const struct ether_header *ethernet,const struct
 struct info_packet *PL_getPacket(int internet)
 {
 	double_list *list;
-	sem_t *mutex;
+	pthread_mutex_t *mutex;
 	struct info_packet *ret = NULL;
 
 	if (w_globvars.internet_packets_buffer == NULL) {
@@ -170,9 +170,9 @@ struct info_packet *PL_getPacket(int internet)
 	}
 
 	// Any packet stored?
-	if (sem_wait(mutex)) 
+	if (pthread_mutex_lock(mutex)) 
 	{
-		perror("PL_getPacket: sem_wait with mutex packages buffer");
+		perror("PL_getPacket: pthread_mutex_lock with mutex packages buffer");
 		exit(1);
 	}
 	if (*list != NULL && !isEmpty_double_list(*list))
@@ -180,9 +180,9 @@ struct info_packet *PL_getPacket(int internet)
 		ret = front_double_list(*list);
 		remove_front_double_list(*list, 0);
 	}
-	if (sem_post(mutex))
+	if (pthread_mutex_unlock(mutex))
 	{
-		perror("PL_getPacket: sem_post with mutex packages buffer");
+		perror("PL_getPacket: pthread_mutex_unlock with mutex packages buffer");
 		exit(1);		
 	}
 	return ret;
@@ -228,7 +228,7 @@ void PL_show_packet(struct info_packet *packet)
 
 void PL_show_info(int internet) {
 	double_list *list;
-	sem_t *mutex;
+	pthread_mutex_t *mutex;
 	
 	if (w_globvars.internet_packets_buffer == NULL) {
 		return;
@@ -246,30 +246,30 @@ void PL_show_info(int internet) {
 	}
 
 	// Show all pending packets (packets in buffer)
-	if (sem_wait(mutex))
+	if (pthread_mutex_lock(mutex))
 	{
-		perror("PL_show_info: sem_wait with mutex packages buffer");
+		perror("PL_show_info: pthread_mutex_lock with mutex packages buffer");
 		exit(1);
 	}
 	while (!isEmpty_double_list(*list)) {
 		// Show one packet and remove it
-		if (sem_post(mutex))
+		if (pthread_mutex_unlock(mutex))
 		{
-			perror("PL_show_info: sem_post with mmutex packages buffer");
+			perror("PL_show_info: pthread_mutex_unlock with mmutex packages buffer");
 			exit(1);		
 		}
 		PL_show_packet(front_double_list(*list));
-		if (sem_wait(mutex))
+		if (pthread_mutex_lock(mutex))
 		{
-			perror("PL_show_info: sem_wait with mutex packages buffer");
+			perror("PL_show_info: pthread_mutex_lock with mutex packages buffer");
 			exit(1);
 		}
 		remove_front_double_list(*list, 1);
 	}
 
-	if (sem_post(mutex))
+	if (pthread_mutex_unlock(mutex))
 	{
-		perror("PL_show_info: sem_post with mutex packages buffer");
+		perror("PL_show_info: pthread_mutex_unlock with mutex packages buffer");
 		exit(1);		
 	}
 

@@ -92,9 +92,9 @@ void *whoIs(void *ptr_paramt)
     if (getInfoWhoIs(s_ip_address, key, value))
     {
         // Insert the value in dictionary
-        if (sem_wait(&w_globvars.mutex_bd_whois)) 
+        if (pthread_mutex_lock(&w_globvars.mutex_bd_whois)) 
         {
-            perror("whoIs: sem_wait with mutex_bd_whois");
+            perror("whoIs: pthread_mutex_lock with mutex_bd_whois");
             exit(1);
         }
 
@@ -128,9 +128,9 @@ void *whoIs(void *ptr_paramt)
             w_globvars.allocated_whois -= sizeof(struct t_value);
 #endif
         }
-        if (sem_post(&w_globvars.mutex_bd_whois))
+        if (pthread_mutex_unlock(&w_globvars.mutex_bd_whois))
         {
-            perror("whoIs: sem_post with mutex_bd_whois");
+            perror("whoIs: pthread_mutex_unlock with mutex_bd_whois");
             exit(1);
         }
     }
@@ -146,15 +146,15 @@ void *whoIs(void *ptr_paramt)
     }
     
     // One thread less
-    if (sem_wait(&w_globvars.mutex_cont_whois_threads)) 
+    if (pthread_mutex_lock(&w_globvars.mutex_cont_whois_threads)) 
     {
-        perror("whoIs: sem_wait with mutex_cont_whois_threads");
+        perror("whoIs: pthread_mutex_lock with mutex_cont_whois_threads");
         exit(1);
     }
     cont_whois_threads--;
-    if (sem_post(&w_globvars.mutex_cont_whois_threads))
+    if (pthread_mutex_unlock(&w_globvars.mutex_cont_whois_threads))
     {
-        perror("whoIs: sem_post with w_globvars.mutex_cont_whois_threads");
+        perror("whoIs: pthread_mutex_unlock with w_globvars.mutex_cont_whois_threads");
         exit(1);
     }
    
@@ -196,15 +196,15 @@ int getInfoWhoIs(char ip_src[INET_ADDRSTRLEN], struct t_key *key, struct t_value
     if (pid) 
     {
         // One more whois request
-        if (sem_wait(&w_globvars.mutex_cont_requests)) 
+        if (pthread_mutex_lock(&w_globvars.mutex_cont_requests)) 
         {
-            perror("getInfoWhoIs: sem_wait with w_globvars.mutex_cont_whois_threads");
+            perror("getInfoWhoIs: pthread_mutex_lock with w_globvars.mutex_cont_whois_threads");
             exit(1);
         }
         w_globvars.cont_requests++;
-        if (sem_post(&w_globvars.mutex_cont_requests))
+        if (pthread_mutex_unlock(&w_globvars.mutex_cont_requests))
         {
-            perror("getInfoWhoIs: sem_post with w_globvars.mutex_cont_whois_threads");
+            perror("getInfoWhoIs: pthread_mutex_unlock with w_globvars.mutex_cont_whois_threads");
             exit(1);
         }
 
@@ -466,9 +466,9 @@ void updateWhoisInfo(uint32_t address, char *country, char *netname)
     now = time(NULL);
 
     // Try to get whois info from dictionary
-    if (sem_wait(&w_globvars.mutex_bd_whois)) 
+    if (pthread_mutex_lock(&w_globvars.mutex_bd_whois)) 
     {
-        perror("updateWhoisInfo: sem_wait with w_globvars.mutex_bd_whois");
+        perror("updateWhoisInfo: pthread_mutex_lock with w_globvars.mutex_bd_whois");
         exit(1);
     }
     info_whois = findAdressWhois(address);
@@ -477,9 +477,9 @@ void updateWhoisInfo(uint32_t address, char *country, char *netname)
         // We have the info. Store it
         strcpy(local_country, info_whois->country);
         strcpy(local_netname, info_whois->netname);
-        if (sem_post(&w_globvars.mutex_bd_whois))
+        if (pthread_mutex_unlock(&w_globvars.mutex_bd_whois))
         {
-            perror("updateWhoisInfo: sem_post with w_globvars.mutex_bd_whois");
+            perror("updateWhoisInfo: pthread_mutex_unlock with w_globvars.mutex_bd_whois");
             exit(1);
         }
         strcpy(country, local_country);
@@ -491,16 +491,16 @@ void updateWhoisInfo(uint32_t address, char *country, char *netname)
     }
     else
     {
-        if (sem_post(&w_globvars.mutex_bd_whois))
+        if (pthread_mutex_unlock(&w_globvars.mutex_bd_whois))
         {
-            perror("updateWhoisInfo: sem_post with w_globvars.mutex_bd_whois");
+            perror("updateWhoisInfo: pthread_mutex_unlock with w_globvars.mutex_bd_whois");
             exit(1);
         }
         // We don't have the info. Launch a whois in a new thread
         // if don't reach the max threads or the max threads per tic or max requests
-        if (sem_wait(&w_globvars.mutex_cont_whois_threads)) 
+        if (pthread_mutex_lock(&w_globvars.mutex_cont_whois_threads)) 
         {
-            perror("updateWhoisInfo: sem_wait with w_globvars.mutex_cont_whois_threads");
+            perror("updateWhoisInfo: pthread_mutex_lock with w_globvars.mutex_cont_whois_threads");
             exit(1);
         }
         // Can we reset cont_threads_per_tic?
@@ -511,42 +511,42 @@ void updateWhoisInfo(uint32_t address, char *country, char *netname)
         }
         if (cont_whois_threads >= MAX_WHOIS_THREADS || cont_threads_per_tic >= MAX_WHOIS_THREADS)
         {
-            if (sem_post(&w_globvars.mutex_cont_whois_threads))
+            if (pthread_mutex_unlock(&w_globvars.mutex_cont_whois_threads))
             {
-                perror("updateWhoisInfo: sem_post with w_globvars.mutex_cont_whois_threads");
+                perror("updateWhoisInfo: pthread_mutex_unlock with w_globvars.mutex_cont_whois_threads");
                 exit(1);
             }
             return;
         }
-        if (sem_wait(&w_globvars.mutex_cont_requests)) 
+        if (pthread_mutex_lock(&w_globvars.mutex_cont_requests)) 
         {
-            perror("updateWhoisInfo: sem_wait with w_globvars.mutex_cont_requests");
+            perror("updateWhoisInfo: pthread_mutex_lock with w_globvars.mutex_cont_requests");
             exit(1);
         }
         if (w_globvars.cont_requests >= MAX_WHOIS_REQUESTS)
         {
-            if (sem_post(&w_globvars.mutex_cont_requests))
+            if (pthread_mutex_unlock(&w_globvars.mutex_cont_requests))
             {
-                perror("updateWhoisInfo: sem_post with w_globvars.mutex_cont_requests");
+                perror("updateWhoisInfo: pthread_mutex_unlock with w_globvars.mutex_cont_requests");
                 exit(1);
             }
-            if (sem_post(&w_globvars.mutex_cont_whois_threads))
+            if (pthread_mutex_unlock(&w_globvars.mutex_cont_whois_threads))
             {
-                perror("updateWhoisInfo: sem_post with w_globvars.mutex_cont_whois_threads");
+                perror("updateWhoisInfo: pthread_mutex_unlock with w_globvars.mutex_cont_whois_threads");
                 exit(1);
             }
             return;
         }
-        if (sem_post(&w_globvars.mutex_cont_requests))
+        if (pthread_mutex_unlock(&w_globvars.mutex_cont_requests))
         {
-            perror("updateWhoisInfo: sem_post with w_globvars.mutex_cont_requests");
+            perror("updateWhoisInfo: pthread_mutex_unlock with w_globvars.mutex_cont_requests");
             exit(1);
         }
         cont_whois_threads++;
         cont_threads_per_tic++;
-        if (sem_post(&w_globvars.mutex_cont_whois_threads))
+        if (pthread_mutex_unlock(&w_globvars.mutex_cont_whois_threads))
         {
-            perror("updateWhoisInfo: sem_post with w_globvars.mutex_cont_whois_threads");
+            perror("updateWhoisInfo: pthread_mutex_unlock with w_globvars.mutex_cont_whois_threads");
             exit(1);
         }
         param_address = (uint32_t *)malloc(sizeof(uint32_t));
@@ -1033,9 +1033,9 @@ void showDatabase(int first_register, int max_registers)
     int current_register;
     int cont_registers;
 
-     if (sem_wait(&w_globvars.mutex_bd_whois)) 
+     if (pthread_mutex_lock(&w_globvars.mutex_bd_whois)) 
     {
-        perror("showWhoisDatabase: sem_wait with w_globvars.mutex_bd_whois");
+        perror("showWhoisDatabase: pthread_mutex_lock with w_globvars.mutex_bd_whois");
         exit(1);
     }
     p = first_dict(bd_whois);
@@ -1055,9 +1055,9 @@ void showDatabase(int first_register, int max_registers)
         cont_registers++;
         p = next_dict(p);
     }
-    if (sem_post(&w_globvars.mutex_bd_whois))
+    if (pthread_mutex_unlock(&w_globvars.mutex_bd_whois))
     {
-        perror("showWhoisDatabase: sem_post with w_globvars.mutex_bd_whois");
+        perror("showWhoisDatabase: pthread_mutex_unlock with w_globvars.mutex_bd_whois");
         exit(1);
     }  
 }
@@ -1092,15 +1092,15 @@ unsigned long numberOfWhoisRegisters()
 {
     unsigned long ret;
 
-    if (sem_wait(&w_globvars.mutex_bd_whois)) 
+    if (pthread_mutex_lock(&w_globvars.mutex_bd_whois)) 
     {
-        perror("numberOfRegisters: sem_wait with w_globvars.mutex_bd_whois");
+        perror("numberOfRegisters: pthread_mutex_lock with w_globvars.mutex_bd_whois");
         exit(1);
     }
     ret = size_dict(bd_whois);
-    if (sem_post(&w_globvars.mutex_bd_whois))
+    if (pthread_mutex_unlock(&w_globvars.mutex_bd_whois))
     {
-        perror("numberOfRegisters: sem_post with w_globvars.mutex_bd_whois");
+        perror("numberOfRegisters: pthread_mutex_unlock with w_globvars.mutex_bd_whois");
         exit(1);
     }
     return ret;
