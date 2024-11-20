@@ -56,8 +56,8 @@ struct info_packet
 };
 
 // Function prototypes
-void PL_addPacket(int internet, const struct ether_header *ethernet,const struct ip *ip,const struct icmp *icmp_header,
-			   const struct tcphdr *tcp_header,const struct udphdr *udp_header,const struct igmp *igmp_header, unsigned n_bytes );
+void PL_addPacket(int internet, const struct ether_header *ethernet, const struct ip *ip, const struct icmp *icmp_header,
+			   const struct tcphdr *tcp_header, const struct udphdr *udp_header, const struct igmp *igmp_header, unsigned n_bytes );
 struct info_packet *PL_getPacket(int internet);
 void PL_show_info(int internet);
 

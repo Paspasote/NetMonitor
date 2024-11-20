@@ -53,7 +53,7 @@ void *sniffer(void *ptr_paramt) {
 			ret_loop_val = pcap_loop(handle, 1, catch_packet, (u_char *)&is_internet);
 		}
 		else {
-			ret_loop_val = 0;
+			ret_loop_val = 1;
 		}
 	} while (!ret_loop_val);
 	
