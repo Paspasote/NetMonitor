@@ -10,3 +10,4 @@
 Whois.data*
 WhoisRequests.*
 .vscode/*
+/*.log
