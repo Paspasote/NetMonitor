@@ -256,7 +256,7 @@ int main(int argc, char *argv[])
 	Configuration();
 
 	// Initialize iptables
-	initIPtables();
+	//initIPtables();
 
 	// Init curses
     if (w_globvars.visual_mode != -1) {
