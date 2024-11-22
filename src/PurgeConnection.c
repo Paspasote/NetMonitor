@@ -284,7 +284,8 @@ void purge_connection(shared_sorted_list list, struct node_shared_sorted_list *n
     }
 #endif
 
-    if (!requestReadNode_shared_sorted_list(node))
+//    if (!requestReadNode_shared_sorted_list(node))
+    if (!requestWriteNode_shared_sorted_list(node))
     {
         // Node already removed
         leaveNode_shared_sorted_list(list, node);
@@ -299,7 +300,8 @@ void purge_connection(shared_sorted_list list, struct node_shared_sorted_list *n
     // Remove this node connection and free the info
     if (removeNode_shared_sorted_list(list, node, 1) != 1)
     {
-        leaveReadNode_shared_sorted_list(node);
+//        leaveReadNode_shared_sorted_list(node);
+        leaveWriteNode_shared_sorted_list(node);
         leaveNode_shared_sorted_list(list, node);
     }
 #ifdef DEBUG
