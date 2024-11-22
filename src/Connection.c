@@ -617,7 +617,6 @@ void addConnection(int internet, int incoming, struct info_packet *packet, unsig
 		}
 #endif
 		// The connection is new.
-
  		// Initialize stats of new connection
 		info = new_info;
 		info->last_connections = NULL;
@@ -629,44 +628,7 @@ void addConnection(int internet, int incoming, struct info_packet *packet, unsig
 		info->NAT = 0;
 		info->ip_NAT_dst.s_addr = 0;
 
-		// Get kernel conntrack info for this new connection
-		switch (new_info->ip_protocol)
-		{
-			case IPPROTO_ICMP:
-				info_conntrack = get(info->ip_protocol, info->ip_src.s_addr, info->shared_info.tcp_info.sport, info->ip_dst.s_addr, info->shared_info.tcp_info.dport, &info->ip_NAT_dst.s_addr, &info->shared_info.tcp_info.NAT_dport);
-				if (info_conntrack != -1) {
-					info->starting = (info_conntrack & CONNTRACK_CLIENT) != 0;
-					info->stablished = (info_conntrack & CONNTRACK_STABLISHED) != 0;
-					info->NAT = (info_conntrack & CONNTRACK_NAT) != 0;
-				}
-				else {
-					info->starting  = 1;
-				}
-				break;
-			case IPPROTO_TCP:
-				info_conntrack = get(info->ip_protocol, info->ip_src.s_addr, info->shared_info.tcp_info.sport, info->ip_dst.s_addr, info->shared_info.tcp_info.dport, &info->ip_NAT_dst.s_addr, &info->shared_info.tcp_info.NAT_dport);
-				if (info_conntrack != -1) {
-					info->starting = (info_conntrack & CONNTRACK_CLIENT) != 0;
-					info->stablished = (info_conntrack & CONNTRACK_STABLISHED) != 0;
-					info->NAT = (info_conntrack & CONNTRACK_NAT) != 0;
-				}
-				else {
-					info->starting  = 1;
-				}
-				break;
-			case IPPROTO_UDP:
-				info_conntrack = get(info->ip_protocol, info->ip_src.s_addr, info->shared_info.udp_info.sport, info->ip_dst.s_addr, info->shared_info.udp_info.dport, &info->ip_NAT_dst.s_addr, &info->shared_info.udp_info.NAT_dport);
-				if (info_conntrack != -1) {
-					info->starting = (info_conntrack & CONNTRACK_CLIENT) != 0;
-					info->stablished = (info_conntrack & CONNTRACK_STABLISHED) != 0;
-					info->NAT = (info_conntrack & CONNTRACK_NAT) != 0;
-				}
-				else {
-					info->starting = 1;
-				}
-				break;
-		}
-	}  // end of new connection
+	}
 	else 
 	{
 		// Existing connection  
@@ -714,48 +676,6 @@ void addConnection(int internet, int incoming, struct info_packet *packet, unsig
 			info->stablished = 0;
 			info->starting = 1;
 		}
-		else {
-			// Check if this is a stablished connection
-			if (!info->stablished) {
-				// Get kernel conntrack info for this new connection (for TCP and UDP only)
-				switch (new_info->ip_protocol)
-				{
-					case IPPROTO_ICMP:
-						info_conntrack = get(info->ip_protocol, info->ip_src.s_addr, info->shared_info.tcp_info.sport, info->ip_dst.s_addr, info->shared_info.tcp_info.dport, &info->ip_NAT_dst.s_addr, &info->shared_info.tcp_info.NAT_dport);
-						if (info_conntrack != -1) {
-							info->starting = (info_conntrack & CONNTRACK_CLIENT) != 0;
-							info->stablished = (info_conntrack & CONNTRACK_STABLISHED) != 0;
-							info->NAT = (info_conntrack & CONNTRACK_NAT) != 0;
-						}
-						else {
-							info->starting  = 1;
-						}
-						break;
-					case IPPROTO_TCP:
-						info_conntrack = get(info->ip_protocol, info->ip_src.s_addr, info->shared_info.tcp_info.sport, info->ip_dst.s_addr, info->shared_info.tcp_info.dport, &info->ip_NAT_dst.s_addr, &info->shared_info.tcp_info.NAT_dport);
-						if (info_conntrack != -1) {
-							info->starting = (info_conntrack & CONNTRACK_CLIENT) != 0;
-							info->stablished = (info_conntrack & CONNTRACK_STABLISHED) != 0;
-							info->NAT = (info_conntrack & CONNTRACK_NAT) != 0;
-						}
-						else {
-							info->starting = 1;
-						}
-						break;
-					case IPPROTO_UDP:
-						info_conntrack = get(info->ip_protocol, info->ip_src.s_addr, info->shared_info.udp_info.sport, info->ip_dst.s_addr, info->shared_info.udp_info.dport, &info->ip_NAT_dst.s_addr, &info->shared_info.udp_info.NAT_dport);
-						if (info_conntrack != -1) {
-							info->starting = (info_conntrack & CONNTRACK_CLIENT) != 0;
-							info->stablished = (info_conntrack & CONNTRACK_STABLISHED) != 0 || (info_conntrack & CONNTRACK_SEEN_REPLY) != 0 || (info_conntrack & CONNTRACK_ASURED) != 0;
-							info->NAT = (info_conntrack & CONNTRACK_NAT) != 0;
-						}
-						else {
-							info->starting = 1;
-						}
-						break;
-				}
-			}
-		}
 	} // end of existing connection
 
 #ifdef DEBUG
@@ -768,15 +688,45 @@ void addConnection(int internet, int incoming, struct info_packet *packet, unsig
 	}
 #endif
 
-	// Is it an incoming NAT connection (from internet) and
-	// still don't know local IP addres destination?
-	if (internet && info->incoming && info->ip_NAT_dst.s_addr == 0) {
-		// Yes. Try to get local IP address destination
-		info_conntrack = get(info->ip_protocol, info->ip_src.s_addr, info->shared_info.tcp_info.sport, info->ip_dst.s_addr, info->shared_info.tcp_info.dport, &info->ip_NAT_dst.s_addr, &info->shared_info.tcp_info.NAT_dport);
-		if (info->ip_NAT_dst.s_addr == 0) {
-			info->ip_NAT_dst.s_addr = checkForRelativeNATConnection(info);
+	// Check if this is a stablished connection
+	if (!info->stablished) {
+		// Get kernel conntrack info for this connection
+		switch (info->ip_protocol)
+		{
+			case IPPROTO_ICMP:
+				info_conntrack = get_conntrack_ICMP(info->ip_src.s_addr, info->ip_dst.s_addr, info->shared_info.icmp_info.type, info->shared_info.icmp_info.code, &info->ip_NAT_dst.s_addr);
+				if (info_conntrack != -1) {
+ 					info->starting = (info_conntrack & CONNTRACK_CLIENT) != 0;
+					info->stablished = (info_conntrack & CONNTRACK_STABLISHED) != 0;
+ 					info->NAT = (info_conntrack & CONNTRACK_NAT) != 0;
+				}
+ 				else {
+					info->starting  = 1;
+				}
+				break;
+			case IPPROTO_TCP:
+				info_conntrack = get_conntrack_TCP_UDP(info->ip_protocol, info->ip_src.s_addr, info->shared_info.tcp_info.sport, info->ip_dst.s_addr, info->shared_info.tcp_info.dport, &info->ip_NAT_dst.s_addr, &info->shared_info.tcp_info.NAT_dport);
+				if (info_conntrack != -1) {
+ 					info->starting = (info_conntrack & CONNTRACK_CLIENT) != 0;
+					info->stablished = (info_conntrack & CONNTRACK_STABLISHED) != 0;
+					info->NAT = (info_conntrack & CONNTRACK_NAT) != 0;
+				}
+ 				else {
+					info->starting = 1;
+				}
+				break;
+			case IPPROTO_UDP:
+				info_conntrack = get_conntrack_TCP_UDP(info->ip_protocol, info->ip_src.s_addr, info->shared_info.udp_info.sport, info->ip_dst.s_addr, info->shared_info.udp_info.dport, &info->ip_NAT_dst.s_addr, &info->shared_info.udp_info.NAT_dport);
+				if (info_conntrack != -1) {
+ 					info->starting = (info_conntrack & CONNTRACK_CLIENT) != 0;
+					info->stablished = (info_conntrack & CONNTRACK_STABLISHED) != 0 || (info_conntrack & CONNTRACK_SEEN_REPLY) != 0 || (info_conntrack & CONNTRACK_ASURED) != 0;
+					info->NAT = (info_conntrack & CONNTRACK_NAT) != 0;
+				}
+ 				else {
+					info->starting = 1;
+				}
+				break;
 		}
-		info->NAT = info->ip_NAT_dst.s_addr != 0;
 	}
 
 	// One hit more

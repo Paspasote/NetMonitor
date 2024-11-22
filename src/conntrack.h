@@ -12,8 +12,8 @@
 #define CONNTRACK_NAT           16
 
 // Function prototypes
-int get(uint8_t ip_protocol, in_addr_t ip_src, uint16_t port_src, in_addr_t ip_dst, uint16_t port_dst, uint32_t *ip_NAT, uint16_t *port_NAT);
-// Query conntrack kernel table for a specific connection
+int get_conntrack_TCP_UDP(uint8_t ip_protocol, in_addr_t ip_src, uint16_t port_src, in_addr_t ip_dst, uint16_t port_dst, uint32_t *ip_NAT, uint16_t *port_NAT);
+// Query conntrack kernel table for a specific TCP/UDP connection
 // NEEDS:
 //       Protocol ID
 //       Source IP address
@@ -22,6 +22,20 @@ int get(uint8_t ip_protocol, in_addr_t ip_src, uint16_t port_src, in_addr_t ip_d
 //       Destination port number
 //       Pointer to NAT IP destination
 //       Pointer to NAT port number destination
+// MODIFIES:
+//       Pointer to NAT IP destination with the value for this connection
+//       Pointer to NAT port number destination with the value for this connection
+// RETURN:
+//       if there is a connection in conntrack table then an integer with some bits activated (see constansts above)
+//       -1 if there is not. 
+int get_conntrack_ICMP(in_addr_t ip_src, in_addr_t ip_dst, uint8_t type, uint8_t code, uint32_t *ip_NAT);
+// Query conntrack kernel table for a specific ICMP connection
+// NEEDS:
+//       Source IP address
+//       Destination IP address 
+//       ICMP message type
+//       ICMP type sub-code
+//       Pointer to NAT IP destination (MAYBE THIS IS NOT NEEDED)
 // MODIFIES:
 //       Pointer to NAT IP destination with the value for this connection
 //       Pointer to NAT port number destination with the value for this connection
