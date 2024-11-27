@@ -4,7 +4,7 @@
 #include <pthread.h>
 #include <DoubleList.h>
 
-#define DEBUG 2
+#define DEBUG 1
 
 typedef enum {
    READER      = 0,
@@ -249,14 +249,18 @@ int removeNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorte
 
 /* NEEDS: A list already initialized
           A node of the list
-   MODIFIES: Relocate node in its right position
-   NOTE1: THREADS MUST CALL THIS OPERATION AFTER CHANGE THE NODE'S VALUE IF THIS CHANGE AFFECTS ORDERING.
-   NOTE2: WRITE ACCESS TO NODE IS NEEDED
-   NOTE3: TO RELOCATE NODE IT WILL BE MARK FOR REMOVING AND INSERTED AGAIN. NODE WILL BE REMOVED WHEN LAST THREAD LEAVES NODE, UNTIL THEN
-           OLD AND NEW NODE WILL HAVE THE SAME NEW VALUE. SO THREADS CAN MOVE TO PREV/NEXT NODE SAFETY (FROM ORIGINAL NODE POSITION)
+          The new value (with its own memory allocation)
+          A boolean (int)
+   MODIFIES: Relocate node in its right position. If free_old_info is 1 the free operation over old info will be called
+   RETURN: 1 if update has been done, 0 in another case (node is marked for removing)
+   NOTE1: THREADS MUST CALL THIS OPERATION TO CHANGE THE NODE'S VALUE IF THIS CHANGE AFFECTS ORDERING.
+   NOTE2: NEW MEMORY MUST BE ALLOCATED FOR NEW VALUE.
+   NOTE2: TO RELOCATE NODE IT WILL BE MARK FOR REMOVING AND INSERTED AGAIN. NODE WILL BE REMOVED WHEN LAST THREAD LEAVES NODE, UNTIL THEN
+           REMOVED NODE HAS THE OLD VALUE. THREADS CAN MOVE TO PREV/NEXT NODE SAFETY (FROM ORIGINAL NODE POSITION)
+   NOTE3: WRITE ACCESS TO NODE IS NOT NEEDED BECAUSE OLD VALUE IS KEEPED WHILE REMOVING BUT MUST HAVE ACCESS TO THIS NODE
    ERROR: If list is not initialized
 */
-void updateNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node);
+int updateNode_shared_sorted_list(shared_sorted_list l, struct node_shared_sorted_list *node, void *new_val, int free_old_info);
 
 /* NEEDS: A list already initialized
           A function
@@ -292,7 +296,7 @@ void for_eachNode_shared_sorted_list(shared_sorted_list l, void (*f)(struct node
 */
 void resort_shared_sorted_list(shared_sorted_list l);
 
-#if DEBUG == 2
+#if DEBUG >= 1
 void checkNProcs_shared_sorted_list(shared_sorted_list l,  void (*f)(void *));
 #endif
 
