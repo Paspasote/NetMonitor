@@ -137,7 +137,7 @@ void insert_sorted_list(sorted_list l,  void * val)
 		// Find the position for the new node
 		p = l->header;
 		prev_p = NULL;
-		while (p != NULL && (*l->f_compare)(val, p->info) == 1)
+		while (p != NULL && (*l->f_compare)(val, p->info) != -1)
 		{
 			prev_p = p;
 			p = p->next;
@@ -290,7 +290,7 @@ void updateNode_sorted_list(sorted_list l, struct node_sorted_list *node) {
 		// Find the position for the new node
 		p = l->header;
 		prev_p = NULL;
-		while (p != NULL && (*l->f_compare)(node->info, p->info) == 1)
+		while (p != NULL && (*l->f_compare)(node->info, p->info) != -1)
 		{
 			prev_p = p;
 			p = p->next;
