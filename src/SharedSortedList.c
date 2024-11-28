@@ -1114,7 +1114,7 @@ void insert_shared_sorted_list(shared_sorted_list l,  void * val)
 			if (requestReadNode_shared_sorted_list(node))
 			{
 				// Compares val with info node
-				fin = (*f)(val, node->info) != 1;
+				fin = (*f)(val, node->info) == -1;
 
 				// No more read access needed for node
 				leaveReadNode_shared_sorted_list(node);
@@ -1306,7 +1306,7 @@ struct node_shared_sorted_list * insert_access_shared_sorted_list(shared_sorted_
 			if (requestReadNode_shared_sorted_list(node))
 			{
 				// Compares val with info node
-				fin = (*f)(val, node->info) != 1;
+				fin = (*f)(val, node->info) == -1;
 
 				// No more read access needed for node
 				leaveReadNode_shared_sorted_list(node);
@@ -1499,7 +1499,7 @@ struct node_shared_sorted_list * insert_read_access_shared_sorted_list(shared_so
 			if (requestReadNode_shared_sorted_list(node))
 			{
 				// Compares val with info node
-				fin = (*f)(val, node->info) != 1;
+				fin = (*f)(val, node->info) == -1;
 
 				// No more read access needed for node
 				leaveReadNode_shared_sorted_list(node);
@@ -1692,7 +1692,7 @@ struct node_shared_sorted_list * insert_write_access_shared_sorted_list(shared_s
 			if (requestReadNode_shared_sorted_list(node))
 			{
 				// Compares val with info node
-				fin = (*f)(val, node->info) != 1;
+				fin = (*f)(val, node->info) == -1;
 
 				// No more read access needed for node
 				leaveReadNode_shared_sorted_list(node);
