@@ -341,6 +341,46 @@ void removeNode_double_list(double_list l, struct node_double_list *node, int fr
 	l->n_elements--;
 }
 
+struct node_double_list * first_double_list(double_list l)
+{
+	if (l == NULL) 
+	{
+		fprintf(stderr,"first_double_list: List is not valid!!\n");
+		exit(1);
+	}
+	return l->header;
+}
+
+struct node_double_list * next_double_list(struct node_double_list *node)
+{
+	if (node == NULL) 
+	{
+		fprintf(stderr,"next_double_list: Node is not valid!!\n");
+		exit(1);
+	}
+	return node->next;
+}
+
+struct node_double_list * previous_double_list(struct node_double_list *node)
+{
+	if (node == NULL) 
+	{
+		fprintf(stderr,"previous_double_list: Node is not valid!!\n");
+		exit(1);
+	}
+	return node->prev;
+}
+
+struct node_double_list * end_double_list(double_list l)
+{
+	if (l == NULL) 
+	{
+		fprintf(stderr,"end_double_list: List is not valid!!\n");
+		exit(1);
+	}
+	return NULL;
+}
+
 void for_each_double_list(double_list l, void (*f)(void *, void *), void *param) {
 	struct node_double_list *p;
 

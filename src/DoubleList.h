@@ -115,6 +115,30 @@ void removeNode_double_list(double_list l, struct node_double_list *node, int fr
    ERROR: If list is not initialized
 */
 
+struct node_double_list * first_double_list(double_list l);
+/* NEEDS: A list already initialized
+   RETURN: A pointer to the first element (node) of the list or NULL if there is one
+   ERROR: If list is not initialized
+*/
+
+struct node_double_list * next_double_list(struct node_double_list *node);
+/* NEEDS: A pointer to one elment of the list (node)
+   RETURN: The next element on the list (the next node) or NULL if there is none
+   ERROR: If node is NULL
+*/
+
+struct node_double_list * previous_double_list(struct node_double_list *node);
+/* NEEDS: A pointer to one elment of the list (node)
+   RETURN: The previous element on the list (the previous node) or NULL if there is none
+   ERROR: If node is NULL
+*/
+
+struct node_double_list * end_double_list(double_list l);
+/* NEEDS: A list already initialized
+   RETURN: A pointer to the end of the list (NULL)
+   ERROR: If list is not initialized
+*/
+
 void for_each_double_list(double_list l, void (*f)(void *, void *), void *param);
 /* NEEDS: A list already initialized
           A function
