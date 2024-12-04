@@ -1805,7 +1805,7 @@ int remove_shared_sorted_list(shared_sorted_list l, void *val, int free_info, in
 {
 	int (*f)(void *, void*);
 	struct node_shared_sorted_list *node, *current;
-	int count, result;
+	int count;
 
 	if (l == NULL) 
 	{
