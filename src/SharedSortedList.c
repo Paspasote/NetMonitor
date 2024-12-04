@@ -966,6 +966,7 @@ void clear_all_shared_sorted_list(shared_sorted_list l, int free_info, void (*f)
 
 void exclusiveClear_all_shared_sorted_list(shared_sorted_list l, int free_info, void (*f)(void *, void *), void *param) {
  	struct node_shared_sorted_list *node, *current_node;
+	int nprocs, removed;
 
 	if (l == NULL) 
 	{
@@ -992,6 +993,8 @@ void exclusiveClear_all_shared_sorted_list(shared_sorted_list l, int free_info, 
 			// Found it
 			current_node = node;
 			node = node->next;
+			removed = 0;
+
 			// Recheck if node is not removed with mutex locked
 			if (pthread_mutex_lock(&(current_node->mutex_sem)))
 			{
@@ -1002,16 +1005,20 @@ void exclusiveClear_all_shared_sorted_list(shared_sorted_list l, int free_info, 
 				// we have to remove this node
  				(*f)(current_node->info, param);
 				current_node->remove_request = 1;
-				// Can we remove it and free it now?
-				if (!current_node->nprocs) {
-					// Yes, we can
-					removeNodeAux_shared_sorted_list(l, current_node);
-				}
+				current_node->free_info = free_info;
+				removed = 1;
+				nprocs = current_node->nprocs;
+
 			}
 			if (pthread_mutex_unlock(&(current_node->mutex_sem)))
 			{
 				perror("clear_all_shared_sorted_list: pthread_mutex_unlock with mutex_sem node");
 				exit(1);		
+			}
+			// Can we remove it and free it now?
+			if (removed && !nprocs) {
+				// Yes, we can
+				removeNodeAux_shared_sorted_list(l, current_node);
 			}
 		}
 	} while (node != NULL);
