@@ -4,7 +4,7 @@
 #include <pthread.h>
 #include <DoubleList.h>
 
-#define DEBUG 1
+#define DEBUG_SHARED_SORTED_LIST 1
 
 typedef enum {
    READER      = 0,
@@ -296,7 +296,7 @@ void for_eachNode_shared_sorted_list(shared_sorted_list l, void (*f)(struct node
 */
 void resort_shared_sorted_list(shared_sorted_list l);
 
-#if DEBUG >= 1
+#if DEBUG_SHARED_SORTED_LIST >= 1
 void checkNProcs_shared_sorted_list(shared_sorted_list l,  void (*f)(void *));
 #endif
 

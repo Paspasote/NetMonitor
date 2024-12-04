@@ -84,7 +84,7 @@ int requestAccessNode_shared_sorted_list(shared_sorted_list l, struct node_share
 int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 {
 	struct info_queue *aux, *aux2;
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST_SHARED_SORTED_LIST >= 2
 	int awaked = 0;
 #endif
 
@@ -101,12 +101,12 @@ int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 		perror("requestReadNode_shared_sorted_list: pthread_mutex_lock with mutex_requests node");
 		exit(1);
 	}
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST_SHARED_SORTED_LIST >= 2
 	printf("Hilo LECTOR %lu solicita acceso lectura (nodo %p)\n", pthread_self(), node);
 #endif
 	// Any writer accessing or write requests pending?
 	if (node->nwriters > 0 || !isEmpty_double_list(node->requests_queue)) {
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST_SHARED_SORTED_LIST >= 2
 		printf("Hilo LECTOR %lu debe esperar (nodo %p)\n", pthread_self(), node);
 #endif
 		// Must wait. Is requests queue empty?
@@ -114,7 +114,7 @@ int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 		if (!isEmpty_double_list(node->requests_queue)) {
 			// Get info of thread in the tail
 			aux = (struct info_queue *) tail_double_list(node->requests_queue);
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST_SHARED_SORTED_LIST >= 2
 			printf("Hilo LECTOR %lu comprobando si el último thread en la cola es un lector (nodo %p)\n", pthread_self(), node);
 #endif
 			// Is it a READER?
@@ -123,7 +123,7 @@ int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 				aux = NULL;
 			}
 			else {
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST_SHARED_SORTED_LIST >= 2
 				printf("Hilo LECTOR %lu se añade al grupo lector (nodo %p)\n", pthread_self(), node);
 #endif
 				// Another reather in the group 
@@ -133,7 +133,7 @@ int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 		// Am I the first reader in the group ?
 		if (aux == NULL) {
 			// Yes
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 			printf("Hilo LECTOR %lu es el primer lector del grupo. Creando variable cond (nodo %p)\n", pthread_self(), node);
 #endif
 			aux = (struct info_queue *) malloc(sizeof(struct info_queue));
@@ -155,7 +155,7 @@ int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 				exit(1);
 			}
 			// Enqueue myself
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 			printf("Hilo LECTOR %lu a la cola de peticiones (nodo %p)\n", pthread_self(), node);
 #endif
 			insert_tail_double_list(node->requests_queue, aux);
@@ -164,7 +164,7 @@ int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 		// Must wait in cond var until we have access
 		aux2 = (struct info_queue *) front_double_list(node->requests_queue);
 		while (node->nwriters > 0 || aux != aux2) {
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 			if (awaked) {
 				printf("¡¡HILO LECTOR %lu SE HA DESPERTADO Y VUELTO A DORMIR!! (nodo: %p  nwriters: %0d  aux: %p   aux2: %p)", pthread_self(), node, node->nwriters, aux, aux2);
 			}
@@ -176,7 +176,7 @@ int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 				perror("requestReadNode_shared_sorted_list: pthread_cond_wait with aux->cond_var");
 				exit(1);
 			}
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 			awaked = 1;
 			printf("Hilo LECTOR %lu se despierta (nodo %p)\n", pthread_self(), node);
 			printf("Hilo LECTOR %lu obtiene frente de la cola (nodo %p)\n", pthread_self(), node);
@@ -185,7 +185,7 @@ int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 		}
 
 		// We have access now!
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 		printf("Hilo LECTOR %lu obtiene ya el acceso y comprueba si es el último del grupo (nodo %p)\n", pthread_self(), node);
 #endif
 		// One reader less waiting in group
@@ -194,7 +194,7 @@ int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 		if (aux->group_count > 0) {
 			// Another reader of my group
 			node->awakening_group = 1;
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 			printf("Hilo LECTOR %lu comprobó que es otro lector de su grupo y lo despierta (nodo %p)\n", pthread_self(), node);
 #endif
 			if (pthread_cond_signal(aux->cond_var)) {
@@ -205,7 +205,7 @@ int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 		else {
 			// I'm the last reader of my group, we have to destroy cond var and free its memory
 			node->awakening_group = 0;
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 			printf("Hilo LECTOR %lu comprobó que es el último lector (nodo %p)\n", pthread_self(), node);
 #endif
 			if (pthread_cond_destroy(aux->cond_var)) {
@@ -215,7 +215,7 @@ int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 			free(aux->cond_var);
 			// Dequeue myself and free memory
 			remove_front_double_list(node->requests_queue, 1);
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 			printf("Hilo LECTOR %lu destruyó su variable condición y se desencoló (nodo %p)\n", pthread_self(), node);
 #endif
 		}
@@ -223,7 +223,7 @@ int requestReadNode_shared_sorted_list(struct node_shared_sorted_list *node)
 
 	// Another reader accessing this node
 	node->nreaders++;
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 	printf("Hilo LECTOR %lu regresa de la operación requestRead (nodo %p   readers: %0d)\n", pthread_self(), node, node->nreaders);
 #endif
 	if (pthread_mutex_unlock(&(node->mutex_requests))) {
@@ -248,7 +248,7 @@ void leaveReadNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 		exit(1);
 	}
 	node->nreaders--;
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 	printf("Hilo LECTOR %lu abandona acceso lectura (nodo %p   readers: %0d)\n", pthread_self(), node, node->nreaders);
 	if (!node->awakening_group) {
 		if (!isEmpty_double_list(node->requests_queue)) {
@@ -268,7 +268,7 @@ void leaveReadNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 			perror("leaveReadNode_shared_sorted_list: pthread_cond_signal with aux->cond_var");
 			exit(1);
 		}
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 		if (aux->type == WRITER) {
 			printf("Hilo LECTOR %lu despertó al siguiente escritor esperando (nodo %p)\n", pthread_self(), node);
 		}
@@ -277,7 +277,7 @@ void leaveReadNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 		}
 #endif
 	}
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 	printf("Hilo LECTOR %lu regresa de la operación leaveRequestRead (nodo %p)\n", pthread_self(), node);
 #endif
 	if (pthread_mutex_unlock(&(node->mutex_requests))) {
@@ -288,7 +288,7 @@ void leaveReadNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 
 int requestWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 	struct info_queue *aux, *aux2;
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 	int awaked = 0;
 #endif
 
@@ -305,12 +305,12 @@ int requestWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 		perror("requestWriteNode_shared_sorted_list: pthread_mutex_lock with mutex_requests node");
 		exit(1);
 	}
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 	printf("Hilo ESCRITOR %lu solicita acceso (nodo %p)\n", pthread_self(), node);
 #endif
 	// Anyone accessing?
 	if (node->nwriters > 0 || node->nreaders > 0 || !isEmpty_double_list(node->requests_queue)) {
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 		printf("Hilo ESCRITOR %lu debe esperar (nodo %p)\n", pthread_self(), node);
 #endif
 		// Must wait and insert myself in queue
@@ -333,14 +333,14 @@ int requestWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 			exit(1);
 		}
 		// Enqueue myself
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 		printf("Hilo ESCRITOR %lu a la cola de peticiones (nodo %p)\n", pthread_self(), node);
 #endif
 		insert_tail_double_list(node->requests_queue, aux);
 		// Must wait in cond var until we have access
 		aux2 = (struct info_queue *) front_double_list(node->requests_queue);
 		while (node->nwriters > 0 || node->nreaders > 0 || aux != aux2) {
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 			if (awaked) {
 				printf("¡¡HILO ESCRITOR %lu SE HA DESPERTADO Y VUELTO A DORMIR!! (nodo: %p  nwriters: %0d  nreaders: %0d   aux: %p   aux2: %p)", pthread_self(), node, node->nwriters, node->nreaders, aux, aux2);
 			}
@@ -352,7 +352,7 @@ int requestWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 				perror("requestWriteNode_shared_sorted_list: pthread_cond_wait with mutex_requests node");
 				exit(1);
 			}
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 			awaked = 1;
 			printf("Hilo ESCRITOR %lu se despierta (nodo %p)\n", pthread_self(), node);
 			printf("Hilo ESCRITOR %lu obtiene frente de la cola (nodo %p)\n", pthread_self(), node);
@@ -361,7 +361,7 @@ int requestWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 		}
 
 		// We have access now!
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 		printf("Hilo ESCRITOR %lu obtiene ya el acceso (nodo %p)\n", pthread_self(), node);
 #endif
 		// We have to destroy cond var and free its memory
@@ -372,14 +372,14 @@ int requestWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 		free(aux->cond_var);
 		// Remove myself from queue and free memory
 		remove_front_double_list(node->requests_queue, 1);
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 		printf("Hilo ESCRITOR %lu destruyó su variable condición y se desencoló (nodo %p)\n", pthread_self(), node);
 #endif
 	}
 
 	// Another writer accessing this node
 	node->nwriters++;
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 	printf("Hilo ESCRITOR %lu regresa de la operación requestWrite (nodo %p)\n", pthread_self(), node);
 #endif
 	if (pthread_mutex_unlock(&(node->mutex_requests))) {
@@ -403,13 +403,13 @@ void leaveWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 		fprintf(stderr,"leaveWriteNode_shared_sorted_list: number of writers with access to node is under zero!!\n");
 		exit(1);
 	}
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 	printf("Hilo ESCRITOR %lu abandona acceso escritura (nodo %p)\n", pthread_self(), node);
 #endif
 	node->nwriters--;
 	// if queue is not empty awake the next thread
 	if (!isEmpty_double_list(node->requests_queue)) {
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 		printf("Hilo ESCRITOR %lu despierta al siguiente hilo esperando (nodo %p)\n", pthread_self(), node);
 #endif
 		// Get its info from queue
@@ -419,11 +419,11 @@ void leaveWriteNode_shared_sorted_list(struct node_shared_sorted_list *node) {
 			perror("leaveWriteNode_shared_sorted_list: pthread_cond_signal with aux->cond_var");
 			exit(1);
 		}
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 		printf("Hilo ESCRITOR %lu despertó al siguiente hilo esperando (nodo %p)\n", pthread_self(), node);
 #endif
 	}
-#if DEBUG >= 2
+#if DEBUG_SHARED_SORTED_LIST >= 2
 	printf("Hilo ESCRITOR %lu regresa de la operación leaveRequestWrite (nodo %p)\n", pthread_self(), node);
 #endif
 	if (pthread_mutex_unlock(&(node->mutex_requests))) {
@@ -2124,7 +2124,7 @@ void quicksort_shared_sorted_list(shared_sorted_list l, struct node_shared_sorte
 	}
 }
 
-#if DEBUG >= 1
+#if DEBUG_SHARED_SORTED_LIST >= 1
 	void checkNProcs_shared_sorted_list(shared_sorted_list l,  void (*f)(void *)) {
 		int cont=0;
 		struct node_shared_sorted_list *node;
