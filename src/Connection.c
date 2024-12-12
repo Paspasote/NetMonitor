@@ -701,7 +701,12 @@ void addConnection(int internet, int incoming, struct info_packet *packet, unsig
  					info->NAT = (info_conntrack & CONNTRACK_NAT) != 0;
 				}
  				else {
-					info->starting  = 1;
+					info->starting  = info->shared_info.icmp_info.type == ICMP_ECHO ||
+					                  info->shared_info.icmp_info.type == ICMP_TIMESTAMP ||
+					                  info->shared_info.icmp_info.type == ICMP_INFO_REQUEST ||
+					                  info->shared_info.icmp_info.type == ICMP_REDIRECT ||
+					                  info->shared_info.icmp_info.type == ICMP_ADDRESS;
+					//info->starting = 1;
 				}
 				break;
 			case IPPROTO_TCP:
@@ -712,7 +717,8 @@ void addConnection(int internet, int incoming, struct info_packet *packet, unsig
 					info->NAT = (info_conntrack & CONNTRACK_NAT) != 0;
 				}
  				else {
-					info->starting = 1;
+					info->starting = info->shared_info.tcp_info.sport >= 1024;
+					//info->starting = 1;
 				}
 				break;
 			case IPPROTO_UDP:
@@ -723,7 +729,8 @@ void addConnection(int internet, int incoming, struct info_packet *packet, unsig
 					info->NAT = (info_conntrack & CONNTRACK_NAT) != 0;
 				}
  				else {
-					info->starting = 1;
+					info->starting = info->shared_info.tcp_info.sport >= 1024;
+					//info->starting = 1;
 				}
 				break;
 		}
