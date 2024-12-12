@@ -43,6 +43,7 @@ dictionary outgoing_services_allow;
 dictionary outgoing_services_warning;
 dictionary outgoing_services_alert;
 dictionary outgoing_services_deny;
+sorted_list incoming_hosts_deny;
 sorted_list outgoing_hosts_allow;
 sorted_list outgoing_hosts_warning;
 sorted_list outgoing_hosts_alert;
@@ -60,6 +61,8 @@ void Configuration() {
 	processServiceConfig(&outgoing_services_alert, "outgoing_services_alert.txt");
 	processServiceConfig(&outgoing_services_deny, "outgoing_services_blacklist.txt");
 
+
+	processHostConfig(&incoming_hosts_deny, "incoming_hosts_blacklist.txt");
 	processHostConfig(&outgoing_hosts_allow, "outgoing_hosts_allow.txt");
 	processHostConfig(&outgoing_hosts_warning, "outgoing_hosts_warning.txt");
 	processHostConfig(&outgoing_hosts_alert, "outgoing_hosts_alert.txt");
@@ -76,6 +79,7 @@ void Configuration() {
     c_globvars.cont_os_warning = size_dict(outgoing_services_warning);
     c_globvars.cont_os_alert = size_dict(outgoing_services_alert);
     c_globvars.cont_os_deny = size_dict(outgoing_services_deny);
+	c_globvars.cont_ih_deny = size_sorted_list(incoming_hosts_deny);
     c_globvars.cont_oh_allow = size_sorted_list(outgoing_hosts_allow);
     c_globvars.cont_oh_warning = size_sorted_list(outgoing_hosts_warning);
     c_globvars.cont_oh_alert = size_sorted_list(outgoing_hosts_alert);
@@ -84,12 +88,19 @@ void Configuration() {
 #endif
 }
 
-int incoming_packetAllowed(unsigned protocol, unsigned port) {
+int incoming_packetAllowed(struct in_addr address, unsigned protocol, unsigned port) {
 	struct ports_range info;
 
 	info.lower = port;
 	info.upper = port;
 
+	// Check if source address is allowed
+	if (find_sorted_list(incoming_hosts_deny, (void *)&address, compareAddress2) != NULL) 
+	{
+		// Address found in black list. Do not process it!
+		return 0;
+	}
+	
 	if (find_dict(incoming_services_deny, (void *)&protocol, (void *)&info, config_PortInRange) != NULL) 
 	{
 		// Service found in black list. Do not process it!

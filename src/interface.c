@@ -311,8 +311,8 @@ void refreshTop()
         sprintf(m, "is_allow: %-5u  is_warning: %-5u  is_alert: %-5u  is_deny: %-5u  os_allow: %-5u  os_warning: %-5u  os_alert: %-5u  os_deny: %-5u",
                 c_globvars.cont_is_allow, c_globvars.cont__is_warning, c_globvars.cont_is_alert, c_globvars.cont_is_deny, c_globvars.cont_os_allow, c_globvars.cont_os_warning, c_globvars.cont_os_alert, c_globvars.cont_os_deny);
 		debugMessageModule(INTERFACE_STATS, m, NULL, 1);
-        sprintf(m, "oh_allow: %-5u  oh_warning: %-5u  oh_alert: %-5u  oh_deny: %-5u  Serv_alias: %-5u",
-                c_globvars.cont_oh_allow, c_globvars.cont_oh_warning, c_globvars.cont_oh_alert, c_globvars.cont_oh_deny, c_globvars.cont_services_alias);
+        sprintf(m, "ih_deny: %-5u  oh_allow: %-5u  oh_warning: %-5u  oh_alert: %-5u  oh_deny: %-5u  Serv_alias: %-5u",
+                c_globvars.cont_ih_deny, c_globvars.cont_oh_allow, c_globvars.cont_oh_warning, c_globvars.cont_oh_alert, c_globvars.cont_oh_deny, c_globvars.cont_services_alias);
 		debugMessageModule(INTERFACE_STATS_EXTRA1, m, NULL, 1);
 
         if (pthread_mutex_lock(&w_globvars.mutex_debug_stats)) 

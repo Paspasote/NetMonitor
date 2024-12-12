@@ -33,6 +33,7 @@ struct const_global_vars
     unsigned cont_os_warning;
     unsigned cont_os_alert;
     unsigned cont_os_deny;
+    unsigned cont_ih_deny;
     unsigned cont_oh_allow;
     unsigned cont_oh_warning;
     unsigned cont_oh_alert;

@@ -7,8 +7,8 @@
 // Constants
 #define IPTABLES_CHAIN_BLACKLIST "BlackList"
 #define NFTABLES_CHAIN_BLACKLIST "BlackList"
-#define IPTABLES_ACTIVE	1
-#define NFTABLES_ACTIVE 0
+#define IPTABLES_ACTIVE	0
+#define NFTABLES_ACTIVE 1
 #define RULE_TIMEOUT    300
 
 
@@ -51,7 +51,7 @@
 
 // Function prototypes
 void Configuration();
-int incoming_packetAllowed(unsigned protocol, unsigned port);
+int incoming_packetAllowed(struct in_addr address, unsigned protocol, unsigned port);
 int outgoing_packetAllowed(struct in_addr address, unsigned protocol, unsigned port, int no_tcp_udp);
 char *serviceAlias(unsigned protocol, unsigned port);
 char *serviceShortAlias(unsigned protocol, unsigned port);

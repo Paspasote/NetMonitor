@@ -277,7 +277,7 @@ void incomingConnection(int internet, struct info_packet *packet)
 	{
 		if (packet->ip_protocol == IPPROTO_TCP || packet->ip_protocol == IPPROTO_UDP) 
 		{
-				priority = incoming_packetAllowed(packet->ip_protocol, single_port);
+				priority = incoming_packetAllowed(packet->ip_src, packet->ip_protocol, single_port);
 		}
 	}
 
