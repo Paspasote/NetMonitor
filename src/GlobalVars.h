@@ -75,6 +75,7 @@ struct write_global_vars
     // List and dictionary for store current NFtables rules
     sorted_list input_chains;
     dictionary chains;
+    dictionary sets;
 #endif
 
     // Default view List

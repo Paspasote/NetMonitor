@@ -61,10 +61,12 @@ typedef
     struct {
         int operator;
         uint8_t proto;
+        char *set_name;
         double_list values;
     } expr_t;
 
 // struct to store an address or range of addresses
+// or named set of addresses
 typedef
     struct {
         in_addr_t address;
@@ -72,6 +74,7 @@ typedef
         uint8_t mask;
         uint8_t mask2;
     } address_mask_t;
+
 
 // struct to store a port or rage of ports
 typedef

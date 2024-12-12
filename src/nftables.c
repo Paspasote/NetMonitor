@@ -27,10 +27,10 @@ void free_rules_chain_dictionary(struct value_dict *el, void *param);
 
 // Function to compare for sorting two elements of the input chains list
 int compare_input_chains(void *val1, void *val2);
-// Function to compares for sorting two keys of the chains dictionary
-int compare_keys_chains(void *val1, void *val2);
-// Function to compare for sorting two elements of the chains dictionary
-int compare_chains(struct value_dict *val1, struct value_dict *val2);
+// Function to compares for sorting two keys of type char *
+int compare_keys_string(void *val1, void *val2);
+// Function to compare for sorting two elements of the dictionary
+int compare_string(struct value_dict *val1, struct value_dict *val2);
 
 
 void initXtables() {
@@ -47,9 +47,17 @@ void initXtables() {
 
     // Dictionary with no hook chains
     w_globvars.chains = NULL;
-    init_dict(&w_globvars.chains, compare_chains, compare_keys_chains);
+    init_dict(&w_globvars.chains, compare_string, compare_keys_string);
     if (w_globvars.chains == NULL) {
         fprintf(stderr, "initXtables: CAN NOT CREATE CHAINS DICTIONARY\n");
+        return;
+    }
+
+    // Dictionary with sets
+    w_globvars.sets = NULL;
+    init_dict(&w_globvars.sets, compare_string, compare_keys_string);
+    if (w_globvars.sets == NULL) {
+        fprintf(stderr, "initXtables: CAN NOT CREATE SETS DICTIONARY\n");
         return;
     }
 
@@ -127,6 +135,9 @@ void free_element_input_chain_list(void *el, void *param) {
 void free_expression(void *expression, void *param) {
     expr_t *exp = (expr_t *)expression;
 
+    if (exp->set_name != NULL) {
+        free(exp->set_name);
+    }
     if (exp->values != NULL) {
         clear_all_double_list(exp->values, 1, NULL, NULL);
         free(exp->values);
@@ -213,8 +224,8 @@ int compare_input_chains(void *val1, void *val2) {
     return 1;
 }
 
-// Function to compares for sorting two keys of the chains dictionary
-int compare_keys_chains(void *val1, void *val2) {
+// Function to compares for sorting two keys of type char *
+int compare_keys_string(void *val1, void *val2) {
     char *key1, *key2;
     int comp;
 
@@ -230,8 +241,8 @@ int compare_keys_chains(void *val1, void *val2) {
     return 1;
 }
 
-// Function to compare for sorting two elements of the chains dictionary
-int compare_chains(struct value_dict *val1, struct value_dict *val2) {
+// Function to compare for sorting two elements of the dictionary
+int compare_string(struct value_dict *val1, struct value_dict *val2) {
     char *key1, *key2;
     int comp;
 

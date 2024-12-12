@@ -1,3 +1,5 @@
+#include <string.h>
+
 #include <NFTablesEvaluator.h>
 #include <nftables.h>
 
@@ -45,6 +47,17 @@ RETURN:     Rule's action if packet match the rule.
 int evaluate_rule(rule_t *rule, uint8_t protocol, uint8_t ct_state, const char *input_dev, const char *output_dev, in_addr_t s_address, in_addr_t d_address, uint16_t s_port, uint16_t d_port);
 
 /*
+Check if expression's value is in a named set
+PARAMS:     The expression
+            Packet's protocol
+RETURN:     expr->values if there is not a named set
+            or
+            the list of values of named set
+            or 
+            NULL if any error
+*/
+double_list check_named_set(expr_t *expr);
+/*
 Evaluate local protocol expression
 PARAMS:     The expression
             Packet's protocol
@@ -65,13 +78,14 @@ RETURN:     1 if matching
 int evaluate_device(double_list l_expr, uint8_t protocol, const char *dev_name);
 /*
 Evaluate an address expression
-PARAMS:     The address expression
+PARAMS:     A list of addresses
+            A matching operator
             The address
 RETURN:     1 if matching
             NOT_MATCH if not matching
             -1 if any error
 */
-int evaluate_single_address(expr_t *expr, in_addr_t address);
+int evaluate_single_address(double_list l_address, int operator, in_addr_t address);
 /*
 Evaluate addresses expression
 PARAMS:     The address expressions
@@ -84,13 +98,14 @@ RETURN:     1 if matching
 int evaluate_address(double_list l_expr, uint8_t protocol, in_addr_t in_address);
 /*
 Evaluate a port expression
-PARAMS:     The port expression
+PARAMS:     A list of ports
+            A matching operator
             A port
 RETURN:     1 if matching
             NOT_MATCH if not matching
             -1 if any error
 */
-int evaluate_single_port(expr_t *expr, uint16_t port);
+int evaluate_single_port(double_list l, int operator, uint16_t port);
 /*
 Evaluate port expressions
 PARAMS:     The port expressions
@@ -307,6 +322,7 @@ RETURN:     Rule's action if packet match the rule.
             -1 if any error
 */
 int evaluate_rule(rule_t *rule, uint8_t protocol, uint8_t ct_state, const char *input_dev, const char *output_dev, in_addr_t s_address, in_addr_t d_address, uint16_t s_port, uint16_t d_port) {
+    double_list l;
     struct node_double_list *node;
     expr_t *expr;
     int ret;
@@ -322,7 +338,13 @@ int evaluate_rule(rule_t *rule, uint8_t protocol, uint8_t ct_state, const char *
             if ( ret != 1) {
                 return ret;
             }
-            if (find_double_list(expr->values, &protocol, compare_u_int8) == NULL) {
+            // Is it a named set?
+            l = check_named_set(expr);
+            if (l == NULL) {
+                return -1;
+            }
+            // Evaluation
+            if (find_double_list(l, &protocol, compare_u_int8) == NULL) {
                 if (expr->operator == EQ_OP) {
                     return NOT_MATCH;
                 }
@@ -360,7 +382,13 @@ int evaluate_rule(rule_t *rule, uint8_t protocol, uint8_t ct_state, const char *
             if ( ret != 1) {
                 return ret;
             }
-            if (find_double_list(expr->values, &ct_state, compare_ct_states) == NULL) {
+            // Is it a named set?
+            l = check_named_set(expr);
+            if (l == NULL) {
+                return -1;
+            }
+            // Evaluation
+            if (find_double_list(l, &ct_state, compare_ct_states) == NULL) {
                 if (expr->operator == EQ_OP) {
                     return NOT_MATCH;
                 }
@@ -404,6 +432,28 @@ int evaluate_rule(rule_t *rule, uint8_t protocol, uint8_t ct_state, const char *
 }
 
 /*
+Check if expression's value is in a named set
+PARAMS:     The expression
+            Packet's protocol
+RETURN:     expr->values if there is not a named set
+            or
+            the list of values of named set
+            or 
+            NULL if any error
+*/
+double_list check_named_set(expr_t *expr) {
+    // Is it a named set?
+    if (expr->set_name != NULL) {
+        // Yes. Try to find its list of values
+        return (double_list) get_value_dict(w_globvars.sets, expr->set_name);
+    }
+    else {
+        // No
+        return expr->values;
+    }
+}
+
+/*
 Evaluate local protocol expression
 PARAMS:     The expression
             Packet's protocol
@@ -438,6 +488,7 @@ RETURN:     1 if matching
             -1 if any error
 */
 int evaluate_device(double_list l_expr, uint8_t protocol, const char *dev_name) {
+    double_list l;
     struct node_double_list *node;
     expr_t *expr;
     int ret;
@@ -453,7 +504,13 @@ int evaluate_device(double_list l_expr, uint8_t protocol, const char *dev_name) 
             if ( ret != 1) {
                 return ret;
             }
-            if (find_double_list(expr->values, (char *)dev_name, compare_pchar) == NULL) {
+            // Is it a named set?
+            l = check_named_set(expr);
+            if (l == NULL) {
+                return -1;
+            }
+            // Evaluation
+            if (find_double_list(l, (char *)dev_name, compare_pchar) == NULL) {
                 if (expr->operator == EQ_OP) {
                     return NOT_MATCH;
                 }
@@ -472,20 +529,21 @@ int evaluate_device(double_list l_expr, uint8_t protocol, const char *dev_name) 
 
 /*
 Evaluate an address expression
-PARAMS:     The address expression
+PARAMS:     A list of addresses
+            A matching operator
             The address
 RETURN:     1 if matching
             NOT_MATCH if not matching
             -1 if any error
 */
-int evaluate_single_address(expr_t *expr, in_addr_t address) {
+int evaluate_single_address(double_list l_address, int operator, in_addr_t address) {
     struct node_double_list *node_address;
     address_mask_t *addr;
     in_addr_t address_net, address1, address2, mask;
 	unsigned mask_bits;
 
     // Iterate addresses
-    node_address = first_double_list(expr->values);
+    node_address = first_double_list(l_address);
     while (node_address != NULL) {
         addr = (address_mask_t *)node_address->info;
         // Extract network address of address
@@ -505,7 +563,7 @@ int evaluate_single_address(expr_t *expr, in_addr_t address) {
         if (addr->mask2){
             address2 = ntohl(addr->address2);
         }
-        switch (expr->operator) {
+        switch (operator) {
             case EQ_OP:
                 // Is it a range?
                 if (addr->mask2) {
@@ -558,7 +616,7 @@ int evaluate_single_address(expr_t *expr, in_addr_t address) {
         // Next address
         node_address = next_double_list(node_address);
     }
-    if (expr->operator == NE_OP) {
+    if (operator == NE_OP) {
         return 1;
     }
     return NOT_MATCH;
@@ -574,6 +632,7 @@ RETURN:     1 if matching
             -1 if any error
 */
 int evaluate_address(double_list l_expr, uint8_t protocol, in_addr_t in_address) {
+    double_list l;
     struct node_double_list *node;
     expr_t *expr;
     in_addr_t address;
@@ -592,8 +651,13 @@ int evaluate_address(double_list l_expr, uint8_t protocol, in_addr_t in_address)
             if ( ret != 1) {
                 return ret;
             }
-            // Current address matching?
-            ret = evaluate_single_address(expr, address);
+            // Is it a named set?
+            l = check_named_set(expr);
+            if (l == NULL) {
+                return -1;
+            }
+            // Evaluation
+            ret = evaluate_single_address(l, expr->operator, address);
             if (ret != 1) {
                 return ret;
             }
@@ -607,21 +671,22 @@ int evaluate_address(double_list l_expr, uint8_t protocol, in_addr_t in_address)
 
 /*
 Evaluate a port expression
-PARAMS:     The port expression
+PARAMS:     A list of ports
+            A matching operator
             A port
 RETURN:     1 if matching
             NOT_MATCH if not matching
             -1 if any error
 */
-int evaluate_single_port(expr_t *expr, uint16_t port) {
+int evaluate_single_port(double_list l, int operator, uint16_t port) {
     struct node_double_list *node_ports;
     port_t *val;
 
     // Iterate ports
-    node_ports = first_double_list(expr->values);
+    node_ports = first_double_list(l);
     while (node_ports != NULL) {
         val = (port_t *)node_ports->info;
-        switch (expr->operator) {
+        switch (operator) {
             case EQ_OP:
                 // Is it a range?
                 if (val->port2) {
@@ -674,7 +739,7 @@ int evaluate_single_port(expr_t *expr, uint16_t port) {
         // Next port
         node_ports = next_double_list(node_ports);
     }
-    if (expr->operator == NE_OP) {
+    if (operator == NE_OP) {
         return 1;
     }
     return NOT_MATCH;
@@ -690,6 +755,7 @@ RETURN:     1 if matching
             -1 if any error
 */
 int evaluate_ports(double_list l_expr, uint8_t protocol, uint16_t port) {
+    double_list l;
     struct node_double_list *node;
     expr_t *expr;
     int ret;
@@ -705,8 +771,13 @@ int evaluate_ports(double_list l_expr, uint8_t protocol, uint16_t port) {
             if ( ret != 1) {
                 return ret;
             }
-            // Current port matching?
-            ret = evaluate_single_port(expr, port);
+            // Is it a named set?
+            l = check_named_set(expr);
+            if (l == NULL) {
+                return -1;
+            }
+            // Evaluation
+            ret = evaluate_single_port(l, expr->operator, port);
             if (ret != 1) {
                 return ret;
             }
