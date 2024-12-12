@@ -1,12 +1,18 @@
 #ifndef __DEBUG_H
 #define __DEBUG_H
 
+
+// Debug level (0 - No debug   >0 debug on)
+//#define DEBUG			1
+// Please, define this symbol and its value in the compiler options
+// Example: -DDEBUG=1
+
+
 #ifdef DEBUG
 
 #include <ncurses.h>
 
 // Constants
-
 #define INTERNET_SNIFFER 0
 #define INTRANET_SNIFFER 1
 #define INTERNET_CONNECTIONS_TRACKER 2
@@ -38,14 +44,7 @@
 #define INTERFACE_THREAD_STATS_ROW 2
 #define MODULE_MESSAGE_SIZE 75
 
-
-// Debug level (0 - No debug   >0 debug on)
-//#define DEBUG			1
-// Please, define this symbol and its value in the compiler options
-// Example: -DDEBUG=1
-
 // Panel size
-
 #define DEBUG_LINES		11
 #define DEBUG_COLS		250
 
