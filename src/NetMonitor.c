@@ -18,7 +18,12 @@
 #include <PurgeConnection.h>
 #include <interface.h>
 #include <WhoIs.h>
+#if NFTABLES_ACTIVE == 1
+#include <nftables.h>
+#endif
+#if IPTABLES_ACTIVE == 1
 #include <iptables.h>
+#endif
 
 #include <NetMonitor.h>
 
@@ -73,7 +78,7 @@ int main(int argc, char *argv[])
 				internet_exist = 1;
 			}
 			// Check if it is intranet device
-			if (!strcmp(ifa->ifa_name, argv[2]))
+			if (argv[2] != NULL && !strcmp(ifa->ifa_name, argv[2]))
 			{
 				c_globvars.network_intranet = ((struct sockaddr_in *)ifa->ifa_addr)->sin_addr.s_addr & ((struct sockaddr_in *)ifa->ifa_netmask)->sin_addr.s_addr;
 				c_globvars.own_mask_intranet = ((struct sockaddr_in *)ifa->ifa_netmask)->sin_addr.s_addr;
@@ -123,6 +128,10 @@ int main(int argc, char *argv[])
     w_globvars.conn_internet_out = NULL;
     w_globvars.conn_intranet_in = NULL;
     w_globvars.conn_intranet_out = NULL;
+#if NFTABLES_ACTIVE == 1
+	w_globvars.input_chains = NULL;
+	w_globvars.chains = NULL;
+#endif
 	w_globvars.DV_l = NULL;
 	w_globvars.IPG_l = NULL;
 	w_globvars.ONATV_l = NULL;
@@ -171,17 +180,12 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	// Initialize mutex
+	// Initialize mutex for internet device
 	if (pthread_mutex_init(&w_globvars.mutex_internet_packets, NULL))
 	{		
 		fprintf(stderr, "%s: Couldn't create mutex_internet_packets mutex!!!!", argv[0]);
 		return 1;
-	}
-	if (pthread_mutex_init(&w_globvars.mutex_intranet_packets, NULL))
-	{		
-		fprintf(stderr, "%s: Couldn't create mutex_intranet_packets mutex!!!!", argv[0]);
-		return 1;
-	}
+	}	
 	if (pthread_mutex_init(&w_globvars.mutex_conn_internet_in, NULL))
 	{		
 		fprintf(stderr, "%s: Couldn't create mutex_conn_internet_in mutex!!!!", argv[0]);
@@ -192,16 +196,28 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "%s: Couldn't create mutex_conn_internet_out mutex!!!!", argv[0]);
 		return 1;
 	}
-	if (pthread_mutex_init(&w_globvars.mutex_conn_intranet_in, NULL))
-	{		
-		fprintf(stderr, "%s: Couldn't create mutex_conn_intranet_in mutex!!!!", argv[0]);
-		return 1;
+
+	// Initialize mutex for intranet device  (if there is one)
+	if (argv[2] != NULL) {
+		if (pthread_mutex_init(&w_globvars.mutex_intranet_packets, NULL))
+		{		
+			fprintf(stderr, "%s: Couldn't create mutex_intranet_packets mutex!!!!", argv[0]);
+			return 1;
+		}
+		if (pthread_mutex_init(&w_globvars.mutex_conn_intranet_in, NULL))
+		{		
+			fprintf(stderr, "%s: Couldn't create mutex_conn_intranet_in mutex!!!!", argv[0]);
+			return 1;
+		}
+		if (pthread_mutex_init(&w_globvars.mutex_conn_intranet_out, NULL))
+		{		
+			fprintf(stderr, "%s: Couldn't create mutex_conn_intranet_out mutex!!!!", argv[0]);
+			return 1;
+		}
 	}
-	if (pthread_mutex_init(&w_globvars.mutex_conn_intranet_out, NULL))
-	{		
-		fprintf(stderr, "%s: Couldn't create mutex_conn_intranet_out mutex!!!!", argv[0]);
-		return 1;
-	}
+
+
+	// Initialize other mutexes
 	if (pthread_mutex_init(&w_globvars.mutex_view_list, NULL))
 	{		
 		fprintf(stderr, "%s: Couldn't create mutex_view_list mutex!!!!", argv[0]);
@@ -255,8 +271,10 @@ int main(int argc, char *argv[])
  	// Read config files
 	Configuration();
 
-	// Initialize iptables
-	//initIPtables();
+#if IPTABLES_ACTIVE == 1 || NFTABLES_ACTIVE == 1
+	// Initialize xtables (iptables or nftables)
+	initXtables();
+#endif
 
 	// Init curses
     if (w_globvars.visual_mode != -1) {
@@ -318,32 +336,39 @@ int main(int argc, char *argv[])
 
 	// Wait until interface thread finish
 	pthread_detach(thread_sniffer_internet);
-	pthread_detach(thread_sniffer_intranet);
 	pthread_detach(thread_conn_tracker_internet);
-	pthread_detach(thread_conn_tracker_intranet);
+	if (argv[2] != NULL) {
+		pthread_detach(thread_sniffer_intranet);
+		pthread_detach(thread_conn_tracker_intranet);
+	}
 	pthread_detach(thread_conn_purge);
 	pthread_join(thread_interface, NULL);
 	pthread_cancel(thread_sniffer_internet);
-	pthread_cancel(thread_sniffer_intranet);
 	pthread_cancel(thread_conn_tracker_internet);
-	pthread_cancel(thread_conn_tracker_intranet);
+	if (argv[2] != NULL) {
+		pthread_cancel(thread_sniffer_intranet);
+		pthread_cancel(thread_conn_tracker_intranet);
+	}
 	pthread_cancel(thread_conn_purge);
 
-	// Destroy sempahores
-	sem_destroy(&w_globvars.mutex_internet_packets);
-	sem_destroy(&w_globvars.mutex_intranet_packets);
-	sem_destroy(&w_globvars.mutex_conn_internet_in);
-	sem_destroy(&w_globvars.mutex_conn_internet_out);
-	sem_destroy(&w_globvars.mutex_conn_intranet_in);
-	sem_destroy(&w_globvars.mutex_conn_intranet_out);
-	sem_destroy(&w_globvars.mutex_view_list);
-	sem_destroy(&w_globvars.mutex_screen);
-	sem_destroy(&w_globvars.mutex_debug_panel);
-	sem_destroy(&w_globvars.mutex_bd_whois);
-	sem_destroy(&w_globvars.mutex_cont_requests);
-	sem_destroy(&w_globvars.mutex_cont_whois_threads);
+
+	// Destroy mutexes
+	pthread_mutex_destroy(&w_globvars.mutex_internet_packets);
+	pthread_mutex_destroy(&w_globvars.mutex_conn_internet_in);
+	pthread_mutex_destroy(&w_globvars.mutex_conn_internet_out);
+	if (argv[2] != NULL) {
+		pthread_mutex_destroy(&w_globvars.mutex_intranet_packets);
+		pthread_mutex_destroy(&w_globvars.mutex_conn_intranet_in);
+		pthread_mutex_destroy(&w_globvars.mutex_conn_intranet_out);
+	}
+	pthread_mutex_destroy(&w_globvars.mutex_view_list);
+	pthread_mutex_destroy(&w_globvars.mutex_screen);
+	pthread_mutex_destroy(&w_globvars.mutex_debug_panel);
+	pthread_mutex_destroy(&w_globvars.mutex_bd_whois);
+	pthread_mutex_destroy(&w_globvars.mutex_cont_requests);
+	pthread_mutex_destroy(&w_globvars.mutex_cont_whois_threads);
 #ifdef DEBUG
-	sem_destroy(&w_globvars.mutex_debug_stats);
+	pthread_mutex_destroy(&w_globvars.mutex_debug_stats);
 #endif
 
 	// Free allocated memory
