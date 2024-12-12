@@ -354,21 +354,31 @@ void refreshTop()
             {
                 cont_internet_out += size_shared_sorted_list(w_globvars.conn_internet_out[i]);
             }
-            if (w_globvars.conn_intranet_in[i] != NULL)
-            {
-                cont_intranet_in += size_shared_sorted_list(w_globvars.conn_intranet_in[i]);
-            }
-            if (w_globvars.conn_intranet_out[i] != NULL)
-            {
-                cont_intranet_out += size_shared_sorted_list(w_globvars.conn_intranet_out[i]);
+            if (c_globvars.intranet_dev != NULL) {
+                if (w_globvars.conn_intranet_in[i] != NULL)
+                {
+                    cont_intranet_in += size_shared_sorted_list(w_globvars.conn_intranet_in[i]);
+                }
+                if (w_globvars.conn_intranet_out[i] != NULL)
+                {
+                    cont_intranet_out += size_shared_sorted_list(w_globvars.conn_intranet_out[i]);
+                }
             }
         }
-        sprintf(m, "Pending Internet Packets: %-8lu  Pending Intranet Packets: %-8lu  Internet IN: %-8lu  Internet OUT: %-8lu  Intranet IN: %-8lu  Intranet OUT: %-8lu", 
-                cont_internet, cont_intranet, cont_internet_in, cont_internet_out, cont_intranet_in, cont_intranet_out);
-		debugMessageModule(INTERFACE_STATS_EXTRA2, m, NULL, 1);
-        sprintf(m, "Internet Packets processed: %-10lu  Intranet Packets processed: %-10lu  Internet Packets purged: %-10lu  Intranet Packets purged: %-10lu", 
-                total_internet, total_intranet, total_internet_purged, total_intranet_purged);
-		debugMessageModule(INTERFACE_STATS_EXTRA3, m, NULL, 1);
+        if (c_globvars.intranet_dev == NULL) {
+            sprintf(m, "Pending Internet Packets: %-8lu  Internet IN: %-8lu  Internet OUT: %-8lu", cont_internet, cont_internet_in, cont_internet_out);
+            debugMessageModule(INTERFACE_STATS_EXTRA2, m, NULL, 1);
+            sprintf(m, "Internet Packets processed: %-10lu  Internet Packets purged: %-10lu", total_internet, total_internet_purged);
+            debugMessageModule(INTERFACE_STATS_EXTRA3, m, NULL, 1);
+        }
+        else {
+            sprintf(m, "Pending Internet Packets: %-8lu  Pending Intranet Packets: %-8lu  Internet IN: %-8lu  Internet OUT: %-8lu  Intranet IN: %-8lu  Intranet OUT: %-8lu", 
+                    cont_internet, cont_intranet, cont_internet_in, cont_internet_out, cont_intranet_in, cont_intranet_out);
+            debugMessageModule(INTERFACE_STATS_EXTRA2, m, NULL, 1);
+            sprintf(m, "Internet Packets processed: %-10lu  Intranet Packets processed: %-10lu  Internet Packets purged: %-10lu  Intranet Packets purged: %-10lu", 
+                    total_internet, total_intranet, total_internet_purged, total_intranet_purged);
+            debugMessageModule(INTERFACE_STATS_EXTRA3, m, NULL, 1);
+        }
 	}
 	/*****************************************************************/
 #endif
