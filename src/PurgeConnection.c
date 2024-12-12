@@ -298,12 +298,10 @@ void purge_connection(shared_sorted_list list, struct node_shared_sorted_list *n
     Purge_freeLastConnections(info, NULL);
 
     // Remove this node connection and free the info
-    if (removeNode_shared_sorted_list(list, node, 1) != 1)
-    {
-//        leaveReadNode_shared_sorted_list(node);
-        leaveWriteNode_shared_sorted_list(node);
-        leaveNode_shared_sorted_list(list, node);
-    }
+//  leaveReadNode_shared_sorted_list(node);
+    leaveWriteNode_shared_sorted_list(node);
+    removeNode_shared_sorted_list(list, node, 1, 1);
+
 #ifdef DEBUG
     /***************************  DEBUG ****************************/
     {
