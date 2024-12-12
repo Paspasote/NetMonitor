@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 
+#include <Configuration.h>
 #include <SharedSortedList.h>
 #include <SortedList.h>
 #include <DefaultView.h>
@@ -68,7 +69,13 @@ struct write_global_vars
     shared_sorted_list * conn_internet_out;
     shared_sorted_list * conn_intranet_in;
     shared_sorted_list * conn_intranet_out;
-    
+
+#if NFTABLES_ACTIVE == 1
+    // List and dictionary for store current NFtables rules
+    sorted_list input_chains;
+    dictionary chains;
+#endif
+
     // Default view List
     sorted_list DV_l;
 

@@ -11,7 +11,7 @@ struct DV_info {
 	char netname[MAX_VISIBLE_NETNAME+1];	/* Net name this packet is coming from */
 
 	char flags[6];						/* Extra source address info */
-	time_t iptable_rule;				/* Last time the iptable rule has been updated */
+	time_t xtable_rule;				/* Last time the nftables or iptables policy has been updated */
 
 	int stablished;		/* 1 if connection is a stablished one, 0 in another case */
 

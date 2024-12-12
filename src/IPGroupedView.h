@@ -12,7 +12,7 @@
 
 struct IPG_service_info {
 	char flags[6];						/* Extra service info */
-	time_t iptable_rule;				/* Last time the iptable rule has been updated */
+	time_t xtable_rule;				/* Last time the xtable rule has been updated */
 
 	int stablished;						/* 1 if incoming connection is stablished one, 0 in another case */
 

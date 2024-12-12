@@ -61,7 +61,7 @@ CPPFLAGS_DEBUG := $(INC_FLAGS) -Wall -Wextra -pedantic -DDEBUG=2
 LDFLAGS :=
 LDFLAGS_DEBUG := -ggdb
 # linker libraries
-LDLIBS := -lcurses -lpcap -lpthread -lip4tc -lnetfilter_conntrack
+LDLIBS := -lcurses -lpcap -lpthread -lip4tc -lnetfilter_conntrack -ljson-c -lnftables
 # flags required for dependency generation; passed to compilers
 DEPFLAGS = -MT $@ -MD -MP -MF $(DEPDIR)/$*.Td
 

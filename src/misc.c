@@ -328,7 +328,7 @@ int banIP(char *address)
             dup(fd);
             dup(fd);
         }
-        execlp("iptables", "iptables", "-I", CHAIN_IPTABLES_BLACKLIST, "-p", "all", "--src", address, "-j", "DROP", NULL);
+        execlp("iptables", "iptables", "-I", IPTABLES_CHAIN_BLACKLIST, "-p", "all", "--src", address, "-j", "DROP", NULL);
         exit(EXIT_FAILURE);
     }
 
@@ -362,7 +362,7 @@ int unbanIP(char *address)
             dup(fd);
             dup(fd);
         }
-        execlp("iptables", "iptables", "-D", CHAIN_IPTABLES_BLACKLIST, "-p", "all", "--src", address, "-j", "DROP", NULL);
+        execlp("iptables", "iptables", "-D", IPTABLES_CHAIN_BLACKLIST, "-p", "all", "--src", address, "-j", "DROP", NULL);
         exit(EXIT_FAILURE);
     }
 

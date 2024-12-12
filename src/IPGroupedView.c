@@ -13,6 +13,13 @@
 #include <Configuration.h>
 #include <iptables.h>
 #include <interface.h>
+#if IPTABLES_ACTIVE == 1
+#include <iptables.h>
+#endif
+#if NFTABLES_ACTIVE == 1
+#include <nftables.h>
+#endif
+
 #ifdef DEBUG
 #include <debug.h>
 #endif
@@ -181,7 +188,7 @@ void IPG_updateList()
 						service_info->conn_node = node;
 						service_info->conn_list = hash_table[i];
 						strcpy(service_info->flags, "?    ");
-						service_info->iptable_rule = 0;
+						service_info->xtable_rule = 0;
 						service_info->stablished = 0;
 
 						// Insert the new connection service in the services list
@@ -365,41 +372,48 @@ void IPG_ShowElementService(void *data, void *param) {
 	// Protocol?
 	switch (conn->ip_protocol) {
 		case IPPROTO_ICMP:
-			// Check if we have to update iptables flag
-			if (now - info_service->iptable_rule > RULE_TIMEOUT)
+#if IPTABLES_ACTIVE == 1 || NFTABLES_ACTIVE == 1
+			// Check if we have to update xtables flag
+			if (now - info_service->xtable_rule > RULE_TIMEOUT)
 			{
-				// Mark iptable rule as old
-				info_service->flags[FLAG_IPTABLES_POS] = '?';
+				// Mark xtable rule as old
+				info_service->flags[FLAG_XTABLES_POS] = '?';
 			}
 			if (info_service->stablished != conn->stablished)
 			{
 				info_service->stablished = conn->stablished;
-				// Mark iptable rule as old
-				info_service->flags[FLAG_IPTABLES_POS] = '?';
+				// Mark xtable rule as old
+				info_service->flags[FLAG_XTABLES_POS] = '?';
 			}
-			if (info_service->flags[FLAG_IPTABLES_POS] == '?')
+			if (info_service->flags[FLAG_XTABLES_POS] == '?')
 			{
-				info_service->iptable_rule = now;
+				info_service->xtable_rule = now;
+#if IPTABLES_ACTIVE == 1
 				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, info->ip_src.s_addr, 0, 
 									   conn->ip_dst.s_addr, 0, conn->shared_info.icmp_info.type, conn->shared_info.icmp_info.code, !conn->stablished, "INPUT"))
+#else
+				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, info->ip_src.s_addr, 0, 
+									   conn->ip_dst.s_addr, 0, conn->shared_info.icmp_info.type, conn->shared_info.icmp_info.code, !conn->stablished))
+#endif
 				{
 					case -1:
-						info_service->flags[FLAG_IPTABLES_POS] = ' ';
+						info_service->flags[FLAG_XTABLES_POS] = ' ';
 						break;
 					case 1:
-						info_service->flags[FLAG_IPTABLES_POS] = FLAG_ACCEPT;
+						info_service->flags[FLAG_XTABLES_POS] = FLAG_ACCEPT;
 						break;
 					case 2:
-						info_service->flags[FLAG_IPTABLES_POS] = FLAG_DROP;
+						info_service->flags[FLAG_XTABLES_POS] = FLAG_DROP;
 						break;
 					case 3:
-						info_service->flags[FLAG_IPTABLES_POS] = FLAG_REJECT;
+						info_service->flags[FLAG_XTABLES_POS] = FLAG_REJECT;
 						break;
 					case 4:
-						info_service->flags[FLAG_IPTABLES_POS] = FLAG_BAN;
+						info_service->flags[FLAG_XTABLES_POS] = FLAG_BAN;
 						break;
 				}
 			}
+#endif
 			// Update Respond/Stablished flag
 			if (!conn->starting)
 			{
@@ -432,41 +446,48 @@ void IPG_ShowElementService(void *data, void *param) {
 			sprintf(line, "  %s [%lu]%s/%s", info_service->flags, conn->hits, s_protocol, s_icmp);
 			break;
 		case IPPROTO_TCP:
-			// Check if we have to update iptables flag
-			if (now - info_service->iptable_rule > RULE_TIMEOUT)
+#if IPTABLES_ACTIVE == 1 || NFTABLES_ACTIVE == 1
+			// Check if we have to update xtables flag
+			if (now - info_service->xtable_rule > RULE_TIMEOUT)
 			{
-				// Mark iptable rule as old
-				info_service->flags[FLAG_IPTABLES_POS] = '?';
+				// Mark xtable rule as old
+				info_service->flags[FLAG_XTABLES_POS] = '?';
 			}
 			if (info_service->stablished != conn->stablished)
 			{
 				info_service->stablished = conn->stablished;
-				// Mark iptable rule as old
-				info_service->flags[FLAG_IPTABLES_POS] = '?';
+				// Mark xtable rule as old
+				info_service->flags[FLAG_XTABLES_POS] = '?';
 			}
-			if (info_service->flags[FLAG_IPTABLES_POS] == '?')
+			if (info_service->flags[FLAG_XTABLES_POS] == '?')
 			{
-				info_service->iptable_rule = now;
+				info_service->xtable_rule = now;
+#if IPTABLES_ACTIVE == 1
 				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, info->ip_src.s_addr, conn->shared_info.tcp_info.sport, 
 									   conn->ip_dst.s_addr, conn->shared_info.tcp_info.dport, conn->shared_info.tcp_info.flags, 0, !conn->stablished, "INPUT"))
+#else
+				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, info->ip_src.s_addr, conn->shared_info.tcp_info.sport, 
+									   conn->ip_dst.s_addr, conn->shared_info.tcp_info.dport, conn->shared_info.tcp_info.flags, 0, !conn->stablished))
+#endif
 				{
 					case -1:
-						info_service->flags[FLAG_IPTABLES_POS] = ' ';
+						info_service->flags[FLAG_XTABLES_POS] = ' ';
 						break;
 					case 1:
-						info_service->flags[FLAG_IPTABLES_POS] = FLAG_ACCEPT;
+						info_service->flags[FLAG_XTABLES_POS] = FLAG_ACCEPT;
 						break;
 					case 2:
-						info_service->flags[FLAG_IPTABLES_POS] = FLAG_DROP;
+						info_service->flags[FLAG_XTABLES_POS] = FLAG_DROP;
 						break;
 					case 3:
-						info_service->flags[FLAG_IPTABLES_POS] = FLAG_REJECT;
+						info_service->flags[FLAG_XTABLES_POS] = FLAG_REJECT;
 						break;
 					case 4:
-						info_service->flags[FLAG_IPTABLES_POS] = FLAG_BAN;
+						info_service->flags[FLAG_XTABLES_POS] = FLAG_BAN;
 						break;
 				}
 			}
+#endif
 			// Update Respond/Stablished flag
 			if (!conn->starting)
 			{
@@ -510,41 +531,48 @@ void IPG_ShowElementService(void *data, void *param) {
 			}
 			break;
 		case IPPROTO_UDP:
-			// Check if we have to update iptables flag
-			if (now - info_service->iptable_rule > RULE_TIMEOUT)
+#if IPTABLES_ACTIVE == 1 || NFTABLES_ACTIVE == 1
+			// Check if we have to update xtables flag
+			if (now - info_service->xtable_rule > RULE_TIMEOUT)
 			{
-				// Mark iptable rule as old
-				info_service->flags[FLAG_IPTABLES_POS] = '?';
+				// Mark xtable rule as old
+				info_service->flags[FLAG_XTABLES_POS] = '?';
 			}
 			if (info_service->stablished != conn->stablished)
 			{
 				info_service->stablished = conn->stablished;
-				// Mark iptable rule as old
-				info_service->flags[FLAG_IPTABLES_POS] = '?';
+				// Mark xtable rule as old
+				info_service->flags[FLAG_XTABLES_POS] = '?';
 			}
-			if (info_service->flags[FLAG_IPTABLES_POS] == '?')
+			if (info_service->flags[FLAG_XTABLES_POS] == '?')
 			{
-				info_service->iptable_rule = now;
+				info_service->xtable_rule = now;
+#if IPTABLES_ACTIVE == 1
 				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, info->ip_src.s_addr, conn->shared_info.udp_info.sport, 
 									   conn->ip_dst.s_addr, conn->shared_info.udp_info.dport, 0, 0, !conn->stablished, "INPUT"))
+#else
+				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, info->ip_src.s_addr, conn->shared_info.udp_info.sport, 
+									   conn->ip_dst.s_addr, conn->shared_info.udp_info.dport, 0, 0, !conn->stablished))
+#endif
 				{
 					case -1:
-						info_service->flags[FLAG_IPTABLES_POS] = ' ';
+						info_service->flags[FLAG_XTABLES_POS] = ' ';
 						break;
 					case 1:
-						info_service->flags[FLAG_IPTABLES_POS] = FLAG_ACCEPT;
+						info_service->flags[FLAG_XTABLES_POS] = FLAG_ACCEPT;
 						break;
 					case 2:
-						info_service->flags[FLAG_IPTABLES_POS] = FLAG_DROP;
+						info_service->flags[FLAG_XTABLES_POS] = FLAG_DROP;
 						break;
 					case 3:
-						info_service->flags[FLAG_IPTABLES_POS] = FLAG_REJECT;
+						info_service->flags[FLAG_XTABLES_POS] = FLAG_REJECT;
 						break;
 					case 4:
-						info_service->flags[FLAG_IPTABLES_POS] = FLAG_BAN;
+						info_service->flags[FLAG_XTABLES_POS] = FLAG_BAN;
 						break;
 				}
 			}
+#endif
 			// Update Respond/Stablished flag
 			if (!conn->starting)
 			{

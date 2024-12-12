@@ -16,8 +16,14 @@
 #include <Configuration.h>
 #include <Connection.h>
 #include <WhoIs.h>
-#include <iptables.h>
 #include <interface.h>
+#if IPTABLES_ACTIVE == 1
+#include <iptables.h>
+#endif
+#if NFTABLES_ACTIVE == 1
+#include <nftables.h>
+#endif
+
 #ifdef DEBUG
 #include <debug.h>
 #endif
@@ -83,7 +89,7 @@ void DV_updateList()
 		DV_Reset();
 	}
 
-    // Iterate buckets of incoming internet hash table
+    // Iterate buckets of incoming internet hash tableq
 	hash_table = w_globvars.conn_internet_in;
 	mutex = &w_globvars.mutex_conn_internet_in;
     for (i=0; i<65536; i++)
@@ -117,7 +123,7 @@ void DV_updateList()
 						strcpy(info->country, "");
 						strcpy(info->netname, "");
 						strcpy(info->flags, "?    ");
-						info->iptable_rule = 0;
+						info->xtable_rule = 0;
 						info->stablished = 0;
 
 
@@ -293,47 +299,54 @@ void DV_ShowElement(void *data, void *param)
 				}
 #endif
 			}
-			// Check if we have to update iptables flag
-			if (now - info->iptable_rule > RULE_TIMEOUT)
+
+#if IPTABLES_ACTIVE == 1 || NFTABLES_ACTIVE == 1
+			// Check if we have to update xtables flag
+			if (now - info->xtable_rule > RULE_TIMEOUT)
 			{
-				// Mark iptable rule as old
-				info->flags[FLAG_IPTABLES_POS] = '?';
+				// Mark xtable rule as old
+				info->flags[FLAG_XTABLES_POS] = '?';
 			}
 			if (info->stablished != conn->stablished)
 			{
 				info->stablished = conn->stablished;
-				// Mark iptable rule as old
-				info->flags[FLAG_IPTABLES_POS] = '?';
+				// Mark xtable rule as old
+				info->flags[FLAG_XTABLES_POS] = '?';
 			}
-			if (info->flags[FLAG_IPTABLES_POS] == '?')
+			if (info->flags[FLAG_XTABLES_POS] == '?')
 			{
-				info->iptable_rule = now;
+				info->xtable_rule = now;
 #ifdef DEBUG
 				/***************************  DEBUG ****************************/
 				{
 					char m[150];
 
-					sprintf(m, "Interface: ShowElement ICMP - Before get iptables action...");
+					sprintf(m, "Interface: ShowElement ICMP - Before get xtables action...");
 					debugMessageModule(INTERFACE, m, NULL, 1);
 				}
 #endif
+#if IPTABLES_ACTIVE == 1
 				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, conn->ip_src.s_addr, 0, 
 									   conn->ip_dst.s_addr, 0, conn->shared_info.icmp_info.type, conn->shared_info.icmp_info.code, !conn->stablished, "INPUT"))
+#else
+				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, conn->ip_src.s_addr, 0, 
+									   conn->ip_dst.s_addr, 0, conn->shared_info.icmp_info.type, conn->shared_info.icmp_info.code, !conn->stablished))
+#endif
 				{
 					case -1:
-						info->flags[FLAG_IPTABLES_POS] = ' ';
+						info->flags[FLAG_XTABLES_POS] = ' ';
 						break;
 					case 1:
-						info->flags[FLAG_IPTABLES_POS] = FLAG_ACCEPT;
+						info->flags[FLAG_XTABLES_POS] = FLAG_ACCEPT;
 						break;
 					case 2:
-						info->flags[FLAG_IPTABLES_POS] = FLAG_DROP;
+						info->flags[FLAG_XTABLES_POS] = FLAG_DROP;
 						break;
 					case 3:
-						info->flags[FLAG_IPTABLES_POS] = FLAG_REJECT;
+						info->flags[FLAG_XTABLES_POS] = FLAG_REJECT;
 						break;
 					case 4:
-						info->flags[FLAG_IPTABLES_POS] = FLAG_BAN;
+						info->flags[FLAG_XTABLES_POS] = FLAG_BAN;
 						break;
 				}
 			}
@@ -342,9 +355,10 @@ void DV_ShowElement(void *data, void *param)
 			{
 				char m[150];
 
-				sprintf(m, "Interface: ShowElement ICMP - After get iptables action...");
+				sprintf(m, "Interface: ShowElement ICMP - After get xtables action...");
 				debugMessageModule(INTERFACE, m, NULL, 1);
 			}
+#endif
 #endif
 			// Update Respond/Stablished flag
 			if (!conn->starting)
@@ -416,48 +430,55 @@ void DV_ShowElement(void *data, void *param)
 				}
 #endif
 			}
-			// Check if we have to update iptables flag
-			if (now - info->iptable_rule > RULE_TIMEOUT)
+#if IPTABLES_ACTIVE == 1 || NFTABLES_ACTIVE == 1
+			// Check if we have to update xtables flag
+			if (now - info->xtable_rule > RULE_TIMEOUT)
 			{
-				// Mark iptable rule as old
-				info->flags[FLAG_IPTABLES_POS] = '?';
+				// Mark xtable rule as old
+				info->flags[FLAG_XTABLES_POS] = '?';
 			}
 			if (info->stablished != conn->stablished)
 			{
 				info->stablished = conn->stablished;
-				// Mark iptable rule as old
-				info->flags[FLAG_IPTABLES_POS] = '?';
+				// Mark xtable rule as old
+				info->flags[FLAG_XTABLES_POS] = '?';
 			}
-			if (info->flags[FLAG_IPTABLES_POS] == '?')
+			if (info->flags[FLAG_XTABLES_POS] == '?')
 			{
-				info->iptable_rule = now;
+				info->xtable_rule = now;
 #ifdef DEBUG
 				/***************************  DEBUG ****************************/
 				{
 					char m[150];
 
-					sprintf(m, "Interface: ShowElement TCP - Before get iptables action...");
+					sprintf(m, "Interface: ShowElement TCP - Before get xtables action...");
 					debugMessageModule(INTERFACE, m, NULL, 1);
 				}
 #endif
+#if IPTABLES_ACTIVE == 1
 				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, conn->ip_src.s_addr, conn->shared_info.tcp_info.sport, 
 									   conn->ip_dst.s_addr, conn->shared_info.tcp_info.dport, conn->shared_info.tcp_info.flags, 0,
 									   !conn->stablished, "INPUT"))
+#else
+				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, conn->ip_src.s_addr, conn->shared_info.tcp_info.sport, 
+									   conn->ip_dst.s_addr, conn->shared_info.tcp_info.dport, conn->shared_info.tcp_info.flags, 0,
+									   !conn->stablished))
+#endif
 				{
 					case -1:
-						info->flags[FLAG_IPTABLES_POS] = ' ';
+						info->flags[FLAG_XTABLES_POS] = ' ';
 						break;
 					case 1:
-						info->flags[FLAG_IPTABLES_POS] = FLAG_ACCEPT;
+						info->flags[FLAG_XTABLES_POS] = FLAG_ACCEPT;
 						break;
 					case 2:
-						info->flags[FLAG_IPTABLES_POS] = FLAG_DROP;
+						info->flags[FLAG_XTABLES_POS] = FLAG_DROP;
 						break;
 					case 3:
-						info->flags[FLAG_IPTABLES_POS] = FLAG_REJECT;
+						info->flags[FLAG_XTABLES_POS] = FLAG_REJECT;
 						break;
 					case 4:
-						info->flags[FLAG_IPTABLES_POS] = FLAG_BAN;
+						info->flags[FLAG_XTABLES_POS] = FLAG_BAN;
 						break;
 				}
 			}
@@ -466,9 +487,10 @@ void DV_ShowElement(void *data, void *param)
 			{
 				char m[150];
 
-				sprintf(m, "Interface: ShowElement TCP - After get iptables action...");
+				sprintf(m, "Interface: ShowElement TCP - After get xtables action...");
 				debugMessageModule(INTERFACE, m, NULL, 1);
 			}
+#endif
 #endif
 			// Update Respond/Stablished flag
 			if (!conn->starting)
@@ -555,47 +577,53 @@ void DV_ShowElement(void *data, void *param)
 				}
 #endif
 			}
-			// Check if we have to update iptables flag
-			if (now - info->iptable_rule > RULE_TIMEOUT)
+#if IPTABLES_ACTIVE == 1 || NFTABLES_ACTIVE == 1
+			// Check if we have to update xtables flag
+			if (now - info->xtable_rule > RULE_TIMEOUT)
 			{
-				// Mark iptable rule as old
-				info->flags[FLAG_IPTABLES_POS] = '?';
+				// Mark xtable rule as old
+				info->flags[FLAG_XTABLES_POS] = '?';
 			}
 			if (info->stablished != conn->stablished)
 			{
 				info->stablished = conn->stablished;
-				// Mark iptable rule as old
-				info->flags[FLAG_IPTABLES_POS] = '?';
+				// Mark xtable rule as old
+				info->flags[FLAG_XTABLES_POS] = '?';
 			}
-			if (info->flags[FLAG_IPTABLES_POS] == '?')
+			if (info->flags[FLAG_XTABLES_POS] == '?')
 			{
-				info->iptable_rule = now;
+				info->xtable_rule = now;
 #ifdef DEBUG
 				/***************************  DEBUG ****************************/
 				{
 					char m[150];
 
-					sprintf(m, "Interface: ShowElement UDP - Before get iptables action...");
+					sprintf(m, "Interface: ShowElement UDP - Before get xtables action...");
 					debugMessageModule(INTERFACE, m, NULL, 1);
 				}
 #endif
+#if IPTABLES_ACTIVE == 1
 				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, conn->ip_src.s_addr, conn->shared_info.udp_info.sport, 
 									   conn->ip_dst.s_addr, conn->shared_info.udp_info.dport, 0, 0, !conn->stablished, "INPUT"))
+#else
+				switch (actionIncoming(c_globvars.internet_dev, conn->ip_protocol, conn->ip_src.s_addr, conn->shared_info.udp_info.sport, 
+									   conn->ip_dst.s_addr, conn->shared_info.udp_info.dport, 0, 0, !conn->stablished))
+#endif
 				{
 					case -1:
-						info->flags[FLAG_IPTABLES_POS] = ' ';
+						info->flags[FLAG_XTABLES_POS] = ' ';
 						break;
 					case 1:
-						info->flags[FLAG_IPTABLES_POS] = FLAG_ACCEPT;
+						info->flags[FLAG_XTABLES_POS] = FLAG_ACCEPT;
 						break;
 					case 2:
-						info->flags[FLAG_IPTABLES_POS] = FLAG_DROP;
+						info->flags[FLAG_XTABLES_POS] = FLAG_DROP;
 						break;
 					case 3:
-						info->flags[FLAG_IPTABLES_POS] = FLAG_REJECT;
+						info->flags[FLAG_XTABLES_POS] = FLAG_REJECT;
 						break;
 					case 4:
-						info->flags[FLAG_IPTABLES_POS] = FLAG_BAN;
+						info->flags[FLAG_XTABLES_POS] = FLAG_BAN;
 						break;
 				}
 			}
@@ -604,9 +632,10 @@ void DV_ShowElement(void *data, void *param)
 			{
 				char m[150];
 
-				sprintf(m, "Interface: ShowElement UDP - After get iptables action...");
+				sprintf(m, "Interface: ShowElement UDP - After get xtables action...");
 				debugMessageModule(INTERFACE, m, NULL, 1);
 			}
+#endif
 #endif
 			// Update Respond/Stablished flag
 			if (!conn->starting)
