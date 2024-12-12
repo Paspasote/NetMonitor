@@ -496,6 +496,10 @@ void updateWhoisInfo(uint32_t address, char *country, char *netname)
             perror("updateWhoisInfo: pthread_mutex_unlock with w_globvars.mutex_bd_whois");
             exit(1);
         }
+
+        // UNCOMMENT THIS TO AVOID WHOIS REQUESTS
+        //return;
+        
         // We don't have the info. Launch a whois in a new thread
         // if don't reach the max threads or the max threads per tic or max requests
         if (pthread_mutex_lock(&w_globvars.mutex_cont_whois_threads)) 
